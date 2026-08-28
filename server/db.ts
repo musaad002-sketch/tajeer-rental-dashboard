@@ -5,6 +5,7 @@ import { ENV } from "./_core/env";
 import { buildOperationEffects, getContractReference, validateVehicleSwap } from "../shared/contractOperations";
 import { nextContractNumber as computeNextContractNumber } from "../shared/contractNumbers";
 import { extendReturnDate, isFinanciallyDistressed } from "../shared/contractCalculation";
+import { calculateContractTotals } from "../shared/contractTotals";
 import { addAdditionalFee, calculateRateAdjustedTotal } from "../shared/contractFinance";
 import { isMileageAdvanceValid } from "../shared/vehicleMaintenance";
 import { allocatePayment } from "../shared/paymentAllocation";
@@ -45,10 +46,11 @@ export async function listContracts(status?: "active" | "overdue" | "suspended" 
   const ids = rows.map((row) => row.contract.id);
   const paymentRows = ids.length ? await db.select().from(payments).where(inArray(payments.contractId, ids)).orderBy(desc(payments.createdAt)) : [];
   return rows.map((row) => {
-    const outstanding = Math.max(0, Number(row.contract.totalAmount) - Number(row.contract.paidAmount));
+    const totals = calculateContractTotals({ baseTotal: row.contract.totalAmount, expectedReturnDate: row.contract.expectedReturnDate, rentalAmount: row.contract.rentalAmount, type: row.contract.type });
+    const outstanding = Math.max(0, Number(totals.grandTotal) - Number(row.contract.paidAmount));
     const currentCharge = Math.min(outstanding, Number(row.contract.rentalAmount));
     const previousOutstanding = Math.max(0, outstanding - currentCharge);
-    return { ...row, previousOutstanding: previousOutstanding.toFixed(2) };
+    return { ...row, totals, previousOutstanding: previousOutstanding.toFixed(2) };
   });
 }
 
@@ -404,20 +406,23 @@ export async function getOfficeLiabilitySummary() {
 }
 
 export async function getVehicleRevenueReport() {
-  const db = await getDb(); if (!db) return { vehicles: [], totals: { contractValue: "0.00", collected: "0.00", outstanding: "0.00" } };
+  const db = await getDb();   if (!db) return { vehicles: [], totals: { baseContractValue: "0.00", contractValue: "0.00", delayTotal: "0.00", grandTotal: "0.00", collected: "0.00", outstanding: "0.00" } };
   const contractsRows = await db.select({ contract: contracts, vehicle: vehicles }).from(contracts).leftJoin(vehicles, eq(contracts.vehicleId, vehicles.id));
   const paymentsRows = await db.select({ payment: payments, contract: contracts, vehicle: vehicles }).from(payments).innerJoin(contracts, eq(payments.contractId, contracts.id)).leftJoin(vehicles, eq(contracts.vehicleId, vehicles.id));
-  const byVehicle = new Map<number, { vehicleId: number; vehicleName: string; plateNumber: string; contractValue: number; collected: number; cash: number; network: number; outstanding: number; months: Array<{ month: string; collected: string; cash: string; network: string }> }>();
+  const byVehicle = new Map<number, { vehicleId: number; vehicleName: string; plateNumber: string; baseContractValue: number; delayTotal: number; grandTotal: number; collected: number; cash: number; network: number; outstanding: number; months: Array<{ month: string; collected: string; cash: string; network: string }> }>();
   for (const row of contractsRows) {
     if (!row.vehicle) continue;
-    const current = byVehicle.get(row.vehicle.id) ?? { vehicleId: row.vehicle.id, vehicleName: `${row.vehicle.make} ${row.vehicle.model}`, plateNumber: row.vehicle.plateNumber, contractValue: 0, collected: 0, cash: 0, network: 0, outstanding: 0, months: [] };
-    current.contractValue += Number(row.contract.totalAmount);
-    current.outstanding += Math.max(0, Number(row.contract.totalAmount) - Number(row.contract.paidAmount));
+    const current = byVehicle.get(row.vehicle.id) ?? { vehicleId: row.vehicle.id, vehicleName: `${row.vehicle.make} ${row.vehicle.model}`, plateNumber: row.vehicle.plateNumber, baseContractValue: 0, delayTotal: 0, grandTotal: 0, collected: 0, cash: 0, network: 0, outstanding: 0, months: [] };
+    const totals = calculateContractTotals({ baseTotal: row.contract.totalAmount, expectedReturnDate: row.contract.expectedReturnDate, rentalAmount: row.contract.rentalAmount, type: row.contract.type });
+    current.baseContractValue += Number(totals.baseTotal);
+    current.delayTotal += Number(totals.delayTotal);
+    current.grandTotal += Number(totals.grandTotal);
+    current.outstanding += Math.max(0, Number(totals.grandTotal) - Number(row.contract.paidAmount));
     byVehicle.set(row.vehicle.id, current);
   }
   for (const row of paymentsRows) {
     if (!row.vehicle) continue;
-    const current = byVehicle.get(row.vehicle.id) ?? { vehicleId: row.vehicle.id, vehicleName: `${row.vehicle.make} ${row.vehicle.model}`, plateNumber: row.vehicle.plateNumber, contractValue: 0, collected: 0, cash: 0, network: 0, outstanding: 0, months: [] };
+    const current = byVehicle.get(row.vehicle.id) ?? { vehicleId: row.vehicle.id, vehicleName: `${row.vehicle.make} ${row.vehicle.model}`, plateNumber: row.vehicle.plateNumber, baseContractValue: 0, delayTotal: 0, grandTotal: 0, collected: 0, cash: 0, network: 0, outstanding: 0, months: [] };
     const month = new Date(row.payment.createdAt).toISOString().slice(0, 7);
     const amount = Number(row.payment.amount);
     const method = row.payment.method;
@@ -432,18 +437,22 @@ export async function getVehicleRevenueReport() {
     } else current.months.push({ month, collected: amount.toFixed(2), cash: method === "cash" ? amount.toFixed(2) : "0.00", network: method === "network" ? amount.toFixed(2) : "0.00" });
     byVehicle.set(row.vehicle.id, current);
   }
-  const report = Array.from(byVehicle.values()).map((row) => ({ ...row, contractValue: row.contractValue.toFixed(2), collected: row.collected.toFixed(2), cash: row.cash.toFixed(2), network: row.network.toFixed(2), outstanding: row.outstanding.toFixed(2), months: row.months.sort((a, b) => b.month.localeCompare(a.month)) }));
-  return { vehicles: report, totals: { contractValue: report.reduce((sum, row) => sum + Number(row.contractValue), 0).toFixed(2), collected: report.reduce((sum, row) => sum + Number(row.collected), 0).toFixed(2), cash: report.reduce((sum, row) => sum + Number(row.cash), 0).toFixed(2), network: report.reduce((sum, row) => sum + Number(row.network), 0).toFixed(2), outstanding: report.reduce((sum, row) => sum + Number(row.outstanding), 0).toFixed(2) } };
+  const report = Array.from(byVehicle.values()).map((row) => ({ ...row, baseContractValue: row.baseContractValue.toFixed(2), contractValue: row.baseContractValue.toFixed(2), delayTotal: row.delayTotal.toFixed(2), grandTotal: row.grandTotal.toFixed(2), collected: row.collected.toFixed(2), cash: row.cash.toFixed(2), network: row.network.toFixed(2), outstanding: row.outstanding.toFixed(2), months: row.months.sort((a, b) => b.month.localeCompare(a.month)) }));
+  return { vehicles: report, totals: { baseContractValue: report.reduce((sum, row) => sum + Number(row.baseContractValue), 0).toFixed(2), contractValue: report.reduce((sum, row) => sum + Number(row.baseContractValue), 0).toFixed(2), delayTotal: report.reduce((sum, row) => sum + Number(row.delayTotal), 0).toFixed(2), grandTotal: report.reduce((sum, row) => sum + Number(row.grandTotal), 0).toFixed(2), collected: report.reduce((sum, row) => sum + Number(row.collected), 0).toFixed(2), cash: report.reduce((sum, row) => sum + Number(row.cash), 0).toFixed(2), network: report.reduce((sum, row) => sum + Number(row.network), 0).toFixed(2), outstanding: report.reduce((sum, row) => sum + Number(row.outstanding), 0).toFixed(2) } };
 }
 
 export async function getAccountingSummary() {
   const db = await getDb(); if (!db) return { revenue: "0.00", outstanding: "0.00", paymentsCount: 0 };
-  const [revenue, outstanding, paymentsCount] = await Promise.all([
+  const [revenue, contractRows, paymentsCount] = await Promise.all([
     db.select({ amount: sql<string>`coalesce(sum(${payments.amount}), 0)` }).from(payments),
-    db.select({ amount: sql<string>`coalesce(sum(${contracts.totalAmount} - ${contracts.paidAmount}), 0)` }).from(contracts).where(sql`${contracts.totalAmount} > ${contracts.paidAmount}`),
+    db.select({ totalAmount: contracts.totalAmount, paidAmount: contracts.paidAmount, expectedReturnDate: contracts.expectedReturnDate, rentalAmount: contracts.rentalAmount, type: contracts.type }).from(contracts),
     db.select({ count: sql<number>`count(*)` }).from(payments),
   ]);
-  return { revenue: String(revenue[0]?.amount ?? "0.00"), outstanding: String(outstanding[0]?.amount ?? "0.00"), paymentsCount: Number(paymentsCount[0]?.count ?? 0) };
+  const outstanding = contractRows.reduce((sum, contract) => {
+    const totals = calculateContractTotals({ baseTotal: contract.totalAmount, expectedReturnDate: contract.expectedReturnDate, rentalAmount: contract.rentalAmount, type: contract.type });
+    return sum + Math.max(0, Number(totals.grandTotal) - Number(contract.paidAmount));
+  }, 0);
+  return { revenue: String(revenue[0]?.amount ?? "0.00"), outstanding: outstanding.toFixed(2), paymentsCount: Number(paymentsCount[0]?.count ?? 0) };
 }
 
 export async function getFleetReport() {
