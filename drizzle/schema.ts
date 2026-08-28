@@ -1,17 +1,7 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, decimal, date, index } from "drizzle-orm/mysql-core";
 
-/**
- * Core user table backing auth flow.
- * Extend this file with additional tables as your product grows.
- * Columns use camelCase to match both database fields and generated types.
- */
 export const users = mysqlTable("users", {
-  /**
-   * Surrogate primary key. Auto-incremented numeric value managed by the database.
-   * Use this for relations between tables.
-   */
   id: int("id").autoincrement().primaryKey(),
-  /** Manus OAuth identifier (openId) returned from the OAuth callback. Unique per user. */
   openId: varchar("openId", { length: 64 }).notNull().unique(),
   name: text("name"),
   email: varchar("email", { length: 320 }),
@@ -22,7 +12,123 @@ export const users = mysqlTable("users", {
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 });
 
+export const vehicleStatus = mysqlEnum("vehicleStatus", ["available", "reserved", "rented", "maintenance", "unavailable"]);
+export const contractType = mysqlEnum("contractType", ["daily", "monthly"]);
+export const contractStatus = mysqlEnum("contractStatus", ["active", "overdue", "suspended", "closed", "returned"]);
+export const operationType = mysqlEnum("operationType", ["new_contract", "extension", "payment", "additional_fee", "rate_update", "vehicle_swap", "suspend", "close", "return"]);
+export const paymentMethod = mysqlEnum("paymentMethod", ["cash", "network", "transfer"]);
+export const maintenanceStatus = mysqlEnum("maintenanceStatus", ["pending", "in_progress", "completed", "written_off"]);
+export const maintenanceType = mysqlEnum("maintenanceType", ["maintenance", "oil_change"]);
+export const liabilityStatus = mysqlEnum("liabilityStatus", ["open", "partially_paid", "paid", "cancelled"]);
+
+export const customers = mysqlTable("customers", {
+  id: int("id").autoincrement().primaryKey(),
+  identityNumber: varchar("identityNumber", { length: 64 }).notNull().unique(),
+  fullName: varchar("fullName", { length: 160 }).notNull(),
+  phone: varchar("phone", { length: 32 }).notNull(),
+  email: varchar("email", { length: 320 }),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({ nameIdx: index("customers_name_idx").on(table.fullName) }));
+
+export const vehicles = mysqlTable("vehicles", {
+  id: int("id").autoincrement().primaryKey(),
+  plateNumber: varchar("plateNumber", { length: 32 }).notNull().unique(),
+  make: varchar("make", { length: 80 }).notNull(),
+  model: varchar("model", { length: 80 }).notNull(),
+  modelYear: int("modelYear").notNull(),
+  dailyRate: decimal("dailyRate", { precision: 10, scale: 2 }).notNull(),
+  monthlyRate: decimal("monthlyRate", { precision: 10, scale: 2 }).notNull(),
+  mileage: int("mileage").default(0).notNull(),
+  lastOilChangeMileage: int("lastOilChangeMileage"),
+  lastOilChangeDate: date("lastOilChangeDate"),
+  oilChangeInterval: int("oilChangeInterval").default(5000).notNull(),
+  insuranceExpiryDate: date("insuranceExpiryDate"),
+  inspectionExpiryDate: date("inspectionExpiryDate"),
+  registrationExpiryDate: date("registrationExpiryDate"),
+  status: vehicleStatus.default("available").notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({ statusIdx: index("vehicles_status_idx").on(table.status) }));
+
+export const contracts = mysqlTable("contracts", {
+  id: int("id").autoincrement().primaryKey(),
+  contractNumber: varchar("contractNumber", { length: 32 }).notNull().unique(),
+  customerId: int("customerId").notNull(),
+  vehicleId: int("vehicleId").notNull(),
+  type: contractType.notNull(),
+  status: contractStatus.default("active").notNull(),
+  startDate: date("startDate").notNull(),
+  expectedReturnDate: date("expectedReturnDate").notNull(),
+  actualReturnDate: date("actualReturnDate"),
+  rentalAmount: decimal("rentalAmount", { precision: 10, scale: 2 }).notNull(),
+  days: int("days").default(1).notNull(),
+  totalAmount: decimal("totalAmount", { precision: 10, scale: 2 }).notNull(),
+  paidAmount: decimal("paidAmount", { precision: 10, scale: 2 }).default("0").notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({ statusIdx: index("contracts_status_idx").on(table.status), customerIdx: index("contracts_customer_idx").on(table.customerId), vehicleIdx: index("contracts_vehicle_idx").on(table.vehicleId) }));
+
+export const contractOperations = mysqlTable("contractOperations", {
+  id: int("id").autoincrement().primaryKey(),
+  contractId: int("contractId").notNull(),
+  operation: operationType.notNull(),
+  vehicleId: int("vehicleId"),
+  previousVehicleId: int("previousVehicleId"),
+  amount: decimal("amount", { precision: 10, scale: 2 }).default("0").notNull(),
+  paymentMethod: paymentMethod,
+  details: text("details"),
+  createdBy: int("createdBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({ contractIdx: index("operations_contract_idx").on(table.contractId) }));
+
+export const payments = mysqlTable("payments", {
+  id: int("id").autoincrement().primaryKey(),
+  contractId: int("contractId").notNull(),
+  customerId: int("customerId").notNull(),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  method: paymentMethod.notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({ contractIdx: index("payments_contract_idx").on(table.contractId), customerIdx: index("payments_customer_idx").on(table.customerId) }));
+
+export const maintenanceRecords = mysqlTable("maintenanceRecords", {
+  id: int("id").autoincrement().primaryKey(),
+  vehicleId: int("vehicleId").notNull(),
+  issueType: varchar("issueType", { length: 160 }).notNull(),
+  serviceType: maintenanceType.default("maintenance").notNull(),
+  mileage: int("mileage"),
+  status: maintenanceStatus.default("pending").notNull(),
+  startDate: date("startDate").notNull(),
+  endDate: date("endDate"),
+  cost: decimal("cost", { precision: 10, scale: 2 }).default("0").notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export const officeLiabilities = mysqlTable("officeLiabilities", {
+  id: int("id").autoincrement().primaryKey(),
+  category: varchar("category", { length: 100 }).notNull(),
+  description: varchar("description", { length: 240 }).notNull(),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  paidAmount: decimal("paidAmount", { precision: 10, scale: 2 }).default("0").notNull(),
+  dueDate: date("dueDate"),
+  status: liabilityStatus.default("open").notNull(),
+  notes: text("notes"),
+  createdBy: int("createdBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
-
-// TODO: Add your tables here
+export type Customer = typeof customers.$inferSelect;
+export type Vehicle = typeof vehicles.$inferSelect;
+export type Contract = typeof contracts.$inferSelect;
+export type ContractOperation = typeof contractOperations.$inferSelect;
+export type Payment = typeof payments.$inferSelect;
+export type MaintenanceRecord = typeof maintenanceRecords.$inferSelect;
+export type OfficeLiability = typeof officeLiabilities.$inferSelect;

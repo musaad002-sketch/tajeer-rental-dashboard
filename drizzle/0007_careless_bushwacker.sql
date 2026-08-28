@@ -1,0 +1,1 @@
+ALTER TABLE `vehicles` ADD `oilChangeInterval` int DEFAULT 5000 NOT NULL;

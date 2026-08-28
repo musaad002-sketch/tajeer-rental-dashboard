@@ -1,33 +1,39 @@
+import DashboardLayout from "@/components/DashboardLayout";
 import { useAuth } from "@/_core/hooks/useAuth";
+import { trpc } from "@/lib/trpc";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
-import { Streamdown } from 'streamdown';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { formatContractRows } from "@shared/contractView";
+import { getOperatingCycle } from "@shared/rentalRules";
+import { ArrowUpLeft, CalendarDays, CarFront, CheckCircle2, ChevronDown, CircleDollarSign, Clock3, Gauge, History, Search, WalletCards, Wrench } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Link, useLocation } from "wouter";
 
-/**
- * All content in this page are only for example, replace with your own feature implementation
- * When building pages, remember your instructions in Frontend Workflow, Frontend Best Practices, Design Guide and Common Pitfalls
- */
+function Metric({ label, value, caption, icon: Icon, color, onClick }: { label: string; value: string; caption: string; icon: typeof CarFront; color: string; onClick?: () => void }) {
+  return <Card className={`border-0 shadow-[0_8px_28px_rgba(22,34,53,0.06)] transition-shadow hover:shadow-[0_12px_34px_rgba(22,34,53,0.1)] ${onClick ? "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#16b4a5]" : ""}`} onClick={onClick} onKeyDown={(event) => { if (onClick && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onClick(); } }} role={onClick ? "button" : undefined} tabIndex={onClick ? 0 : undefined}><CardContent className="flex min-h-[132px] items-center justify-between gap-4 p-5"><div className="min-w-0"><p className="text-xs font-semibold text-slate-500">{label}</p><p className={`mt-2 text-[28px] font-black tracking-tight ${color}`} aria-label={`${label}: ${value}`}>{value}</p><p className="mt-1 text-[11px] text-slate-400">{caption}</p></div><div className="shrink-0 rounded-2xl bg-slate-50 p-3.5"><Icon aria-hidden="true" className={`h-6 w-6 ${color}`} /></div></CardContent></Card>;
+}
+
 export default function Home() {
-  // The useAuth hook provides authentication state.
-  // To implement login/logout, call logout(), or start login from an event
-  // handler: onClick={() => startLogin()} (imported from "@/const"). Never call
-  // startLogin() during render (no href={startLogin()}) — it mints a one-time
-  // nonce cookie and must run only at the moment of navigation.
-  let { user, loading, error, isAuthenticated, logout } = useAuth();
+  const [, setLocation] = useLocation();
+  const [query, setQuery] = useState("");
+  const { user } = useAuth();
+  const { data: summary, isLoading: summaryLoading } = trpc.dashboard.useQuery(undefined, { enabled: Boolean(user) });
+  const { data: liveContracts, isLoading: contractsLoading, isError: contractsError } = trpc.contracts.list.useQuery(undefined, { enabled: Boolean(user) });
+  const cycle = getOperatingCycle(new Date());
+  const cycleLabel = `${cycle.start.toLocaleDateString("ar-SA", { day: "numeric", month: "long" })} – ${cycle.end.toLocaleDateString("ar-SA", { day: "numeric", month: "long" })}`;
+  const displayContracts = useMemo(() => formatContractRows(liveContracts ?? []), [liveContracts]);
+  const filtered = useMemo(() => displayContracts.filter((contract) => `${contract.id} ${contract.customer} ${contract.car}`.toLowerCase().includes(query.trim().toLowerCase())), [displayContracts, query]);
 
-  // If theme is switchable in App.tsx, we can implement theme toggling like this:
-  // const { theme, toggleTheme } = useTheme();
+  return <DashboardLayout><div className="mx-auto max-w-[1500px] space-y-6">
+    <section className="flex flex-col justify-between gap-4 md:flex-row md:items-end"><div><div className="mb-2 flex items-center gap-2 text-xs font-bold text-[#139f95]"><span className="h-2 w-2 rounded-full bg-[#139f95]" aria-hidden="true" /> متابعة التشغيل اليومي</div><h1 className="text-3xl font-black tracking-tight text-[#172235]">لوحة التشغيل اليومية</h1><p className="mt-2 max-w-2xl text-sm text-slate-500">مرحباً بك، {user?.name ?? "مدير النظام"}. راجع العقود والسيارات، ثم ابدأ العقد الجديد باختيار سيارة متاحة من الأسطول.</p></div><div className="flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 shadow-sm"><CalendarDays aria-hidden="true" className="h-4 w-4 text-[#139f95]" /> دورة التشغيل: {cycleLabel} <ChevronDown aria-hidden="true" className="h-4 w-4 text-slate-400" /></div></section>
 
-  return (
-    <div className="min-h-screen flex flex-col">
-      <main>
-        {/* Example: lucide-react for icons */}
-        <Loader2 className="animate-spin" />
-        Example Page
-        {/* Example: Streamdown for markdown rendering */}
-        <Streamdown>Any **markdown** content</Streamdown>
-        <Button variant="default">Example Button</Button>
-      </main>
-    </div>
-  );
+    <section aria-label="مؤشرات التشغيل" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><Metric label="إجمالي السيارات" value={summaryLoading ? "…" : String(summary?.totalVehicles ?? 0)} caption="اضغط لاستعراض الأسطول" icon={CarFront} color="text-[#172235]" onClick={() => setLocation("/vehicles")} /><Metric label="السيارات المتاحة" value={summaryLoading ? "…" : String(summary?.availableVehicles ?? 0)} caption="اختر سيارة لفتح عقد جديد" icon={CarFront} color="text-[#3079cb]" onClick={() => setLocation("/vehicles")} /><Metric label="السيارات المؤجرة" value={summaryLoading ? "…" : String(summary?.rentedVehicles ?? 0)} caption="مرتبطة بعقود سارية" icon={CarFront} color="text-[#139f95]" onClick={() => setLocation("/contracts/active")} /><Metric label="العقود السارية" value={summaryLoading ? "…" : String(summary?.activeContracts ?? 0)} caption="اضغط لعرض العقود السارية" icon={CheckCircle2} color="text-[#159f94]" onClick={() => setLocation("/contracts/active")} /><Metric label="العقود المتأخرة" value={summaryLoading ? "…" : String(summary?.overdueContracts ?? 0)} caption="اضغط لعرض العقود المتأخرة" icon={Clock3} color="text-[#dc4d53]" onClick={() => setLocation("/contracts/overdue")} /><Metric label="المبالغ المستحقة" value={summaryLoading ? "…" : `${summary?.outstandingAmount ?? "0.00"} ر.س`} caption="اضغط لمتابعة الحسابات" icon={CircleDollarSign} color="text-[#b98200]" onClick={() => setLocation("/accounting")} /><Metric label="دفعات اليوم" value={summaryLoading ? "…" : `${summary?.todayPayments ?? "0.00"} ر.س`} caption="اضغط لفتح الحسابات" icon={WalletCards} color="text-[#8a5f00]" onClick={() => setLocation("/accounting")} /><Metric label="وثائق/صيانة" value={summaryLoading ? "…" : String((summary?.maintenanceVehicles ?? 0) + (summary?.oilDueVehicles ?? 0) + (summary?.expiringDocuments ?? 0))} caption="اضغط لمراجعة التنبيهات" icon={Wrench} color="text-[#b98200]" onClick={() => setLocation("/maintenance")} /></section>
+
+
+    <section className="grid gap-5 lg:grid-cols-2"><Card className="border-0 shadow-[0_8px_28px_rgba(22,34,53,0.06)]"><CardHeader><CardTitle className="text-base">ملخص الإيرادات</CardTitle><p className="mt-1 text-xs text-slate-400">راجع الدفعات والإيرادات الفعلية من وحدة الحسابات.</p></CardHeader><CardContent className="flex min-h-[170px] flex-col items-center justify-center rounded-xl bg-slate-50/70 text-center"><WalletCards aria-hidden="true" className="h-8 w-8 text-[#139f95]" /><p className="mt-3 text-sm font-semibold text-slate-700">تفاصيل الدفعات والإيرادات محفوظة في الحسابات</p><Button variant="outline" className="mt-4 min-h-10 gap-2 text-xs" onClick={() => setLocation("/accounting")}><Gauge aria-hidden="true" className="h-4 w-4 text-[#139f95]" /> فتح الحسابات</Button></CardContent></Card><Card className="border-0 shadow-[0_8px_28px_rgba(22,34,53,0.06)]"><CardHeader><CardTitle className="text-base">كشف حساب العميل</CardTitle><p className="mt-1 text-xs text-slate-400">ابحث بالاسم أو رقم الهوية أو العقد من شاشة العملاء.</p></CardHeader><CardContent className="flex min-h-[170px] flex-col items-center justify-center rounded-xl bg-slate-50/70 text-center"><Search aria-hidden="true" className="h-8 w-8 text-[#139f95]" /><p className="mt-3 text-sm font-semibold text-slate-700">راجع عقود ودفعات العميل</p><Button variant="outline" className="mt-4 min-h-10 gap-2 text-xs" onClick={() => setLocation("/customers")}><Gauge aria-hidden="true" className="h-4 w-4 text-[#139f95]" /> فتح العملاء</Button></CardContent></Card></section>
+
+    <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#d8efec] bg-[#effaf8] px-5 py-4"><div className="flex items-center gap-3"><div className="rounded-xl bg-white p-2 text-[#139f95] shadow-sm"><Wrench aria-hidden="true" className="h-5 w-5" /></div><div><p className="text-sm font-bold text-[#0b6e69]">الصيانة والتالف</p><p className="mt-1 text-xs text-slate-500">{summaryLoading ? "جارٍ تحميل الحالة…" : `${summary?.maintenanceVehicles ?? 0} سيارة مرتبطة بصيانة حالياً`}</p></div></div><Button variant="outline" className="min-h-10 gap-2 bg-white text-xs" onClick={() => setLocation("/maintenance")}>عرض التفاصيل <ArrowUpLeft aria-hidden="true" className="h-4 w-4" /></Button></section>
+  </div></DashboardLayout>;
 }

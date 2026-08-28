@@ -1,28 +1,79 @@
-import { COOKIE_NAME } from "@shared/const";
+import { z } from "zod";
+import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
+import { sdk } from "./_core/sdk";
 import { systemRouter } from "./_core/systemRouter";
-import { publicProcedure, router } from "./_core/trpc";
+import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import { isValidVehicleModelYear } from "../shared/vehicleRules";
+import { createCustomer, createMaintenance, createOfficeLiability, createContract, deleteVehicle, getAccountingSummary, listPayments, listReturns, getDashboardAlerts, getDashboardSummary, getFleetReport, getOfficeLiabilitySummary, getContractDetails, getCustomerDetails, getVehicleDetails, getVehicleRevenueReport, listAvailableVehicles, listContracts, listContractOperations, listCustomers, listMaintenance, listOfficeLiabilities, listVehicles, recordContractOperation, recordOfficeLiabilityPayment, searchCustomerLedger, updateMaintenanceStatus, createVehicle, updateVehicle, upsertUser } from "./db";
 
 export const appRouter = router({
-    // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
   system: systemRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
-    logout: publicProcedure.mutation(({ ctx }) => {
+    logout: publicProcedure.mutation(({ ctx }) => { const cookieOptions = getSessionCookieOptions(ctx.req); ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 }); return { success: true } as const; }),
+    localLogin: publicProcedure.input(z.object({ username: z.string().min(1), password: z.string().min(1) })).mutation(async ({ input, ctx }) => {
+      if (process.env.LOCAL_AUTH_ENABLED !== "true") throw new Error("Local login is disabled");
+      const expectedUsername = process.env.LOCAL_ADMIN_USERNAME || "admin";
+      const expectedPassword = process.env.LOCAL_ADMIN_PASSWORD;
+      if (!expectedPassword || input.username !== expectedUsername || input.password !== expectedPassword) {
+        throw new Error("اسم المستخدم أو كلمة المرور غير صحيحة");
+      }
+      const openId = `local_${expectedUsername}`;
+      await upsertUser({ openId, name: "مدير النظام", email: null, loginMethod: "local", role: "admin", lastSignedIn: new Date() });
+      const sessionToken = await sdk.createSessionToken(openId, { name: "مدير النظام", expiresInMs: ONE_YEAR_MS });
       const cookieOptions = getSessionCookieOptions(ctx.req);
-      ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
-      return {
-        success: true,
-      } as const;
+      ctx.res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+      return { success: true } as const;
     }),
   }),
-
-  // TODO: add feature routers here, e.g.
-  // todo: router({
-  //   list: protectedProcedure.query(({ ctx }) =>
-  //     db.getUserTodos(ctx.user.id)
-  //   ),
-  // }),
+  dashboard: protectedProcedure.query(() => getDashboardSummary()),
+  alerts: protectedProcedure.query(() => getDashboardAlerts()),
+  accounting: protectedProcedure.query(() => getAccountingSummary()),
+  liabilities: router({
+    list: protectedProcedure.query(() => listOfficeLiabilities()),
+    summary: protectedProcedure.query(() => getOfficeLiabilitySummary()),
+    create: adminProcedure.input(z.object({ category: z.string().min(1), description: z.string().min(2), amount: z.string().min(1), dueDate: z.string().optional(), notes: z.string().optional() })).mutation(({ input, ctx }) => createOfficeLiability({ ...input, createdBy: ctx.user.id })),
+    pay: adminProcedure.input(z.object({ id: z.number().int().positive(), amount: z.string().min(1) })).mutation(({ input }) => recordOfficeLiabilityPayment(input.id, input.amount)),
+  }),
+  reports: router({
+    fleet: protectedProcedure.query(() => getFleetReport()),
+    vehicleRevenue: protectedProcedure.query(() => getVehicleRevenueReport()),
+  }),
+  payments: router({
+    list: protectedProcedure.query(() => listPayments()),
+  }),
+  returns: router({
+    list: protectedProcedure.query(() => listReturns()),
+  }),
+  contracts: router({
+    create: protectedProcedure.input(z.object({ contractNumber: z.string().trim().min(2).optional(), customerId: z.number().int().positive(), vehicleId: z.number().int().positive(), vehicleMileage: z.number().int().min(0).optional(), type: z.enum(["daily", "monthly"]), startDate: z.string(), expectedReturnDate: z.string(), rentalAmount: z.string().min(1), days: z.number().int().positive(), totalAmount: z.string().min(1), paidAmount: z.string().optional(), notes: z.string().optional() })).mutation(({ input, ctx }) => createContract({ ...input, createdBy: ctx.user.id })),
+    list: protectedProcedure.input(z.object({ status: z.enum(["active", "overdue", "suspended", "closed", "returned"]).optional() }).optional()).query(({ input }) => listContracts(input?.status)),
+    details: protectedProcedure.input(z.object({ id: z.number().int().positive() })).query(({ input }) => getContractDetails(input.id)),
+  }),
+  vehicles: router({
+    list: protectedProcedure.query(() => listVehicles()),
+    details: protectedProcedure.input(z.object({ id: z.number().int().positive() })).query(({ input }) => getVehicleDetails(input.id)),
+    available: protectedProcedure.query(() => listAvailableVehicles()),
+    create: protectedProcedure.input(z.object({ plateNumber: z.string().min(2), make: z.string().min(2), model: z.string().min(1), modelYear: z.number().int().refine(isValidVehicleModelYear, { message: "سنة السيارة يجب أن تكون بين 1 و2100" }), dailyRate: z.string().min(1), monthlyRate: z.string().min(1), mileage: z.number().int().min(0).optional(), lastOilChangeMileage: z.number().int().min(0).optional(), lastOilChangeDate: z.string().optional(), oilChangeInterval: z.number().int().positive().optional(), insuranceExpiryDate: z.string().optional(), inspectionExpiryDate: z.string().optional(), registrationExpiryDate: z.string().optional(), notes: z.string().optional() })).mutation(({ input }) => createVehicle(input)),
+    update: protectedProcedure.input(z.object({ id: z.number().int().positive(), mileage: z.number().int().min(0).optional(), lastOilChangeMileage: z.number().int().min(0).optional(), lastOilChangeDate: z.string().optional(), oilChangeInterval: z.number().int().positive().optional(), insuranceExpiryDate: z.string().optional(), inspectionExpiryDate: z.string().optional(), registrationExpiryDate: z.string().optional() })).mutation(({ input }) => { const { id, ...values } = input; return updateVehicle(id, values); }),
+    delete: adminProcedure.input(z.object({ id: z.number().int().positive() })).mutation(({ input }) => deleteVehicle(input.id)),
+  }),
+  customers: router({
+    list: protectedProcedure.query(() => listCustomers()),
+    details: protectedProcedure.input(z.object({ id: z.number().int().positive() })).query(({ input }) => getCustomerDetails(input.id)),
+    ledger: protectedProcedure.input(z.object({ query: z.string().min(1) })).query(({ input }) => searchCustomerLedger(input.query)),
+    create: protectedProcedure.input(z.object({ identityNumber: z.string().min(1), fullName: z.string().min(2), phone: z.string().min(5), email: z.string().email().optional(), notes: z.string().optional() })).mutation(({ input }) => createCustomer(input)),
+  }),
+  operations: router({
+    history: protectedProcedure.input(z.object({ contractId: z.number().int().positive() })).query(({ input }) => listContractOperations(input.contractId)),
+    record: protectedProcedure.input(z.object({ contractId: z.number().int().positive().optional(), contractNumber: z.string().trim().min(1).optional(), operation: z.enum(["new_contract", "extension", "payment", "additional_fee", "rate_update", "vehicle_swap", "suspend", "close", "return"]), vehicleId: z.number().int().positive().optional(), vehicleMileage: z.number().int().min(0).optional(), amount: z.string().optional(), paymentMethod: z.enum(["cash", "network", "transfer"]).optional(), extensionDays: z.number().int().positive().optional(), details: z.string().optional() }).refine((input) => Boolean(input.contractId || input.contractNumber), { message: "أدخل رقم العقد أولاً", path: ["contractNumber"] }).refine((input) => input.operation !== "extension" || Boolean(input.extensionDays), { message: "أدخل عدد أيام التمديد", path: ["extensionDays"] }).refine((input) => input.operation !== "vehicle_swap" || Boolean(input.vehicleId), { message: "اختر سيارة بديلة", path: ["vehicleId"] }).refine((input) => !["payment", "additional_fee"].includes(input.operation) || Boolean(input.amount && Number(input.amount) > 0), { message: "أدخل مبلغاً صحيحاً", path: ["amount"] }).refine((input) => input.operation !== "rate_update" || Boolean(input.amount && Number(input.amount) > 0), { message: "أدخل سعر التأجير الجديد", path: ["amount"] })).mutation(({ input, ctx }) => recordContractOperation({ ...input, createdBy: ctx.user.id })),
+  }),
+  maintenance: router({
+    list: protectedProcedure.query(() => listMaintenance()),
+    create: protectedProcedure.input(z.object({ vehicleId: z.number().int().positive(), issueType: z.string().min(2), serviceType: z.enum(["maintenance", "oil_change"]).optional(), mileage: z.number().int().min(0).optional(), startDate: z.string(), status: z.enum(["pending", "in_progress"]).optional(), cost: z.string().optional(), notes: z.string().optional() })).mutation(({ input }) => createMaintenance(input)),
+    updateStatus: protectedProcedure.input(z.object({ id: z.number().int().positive(), vehicleId: z.number().int().positive(), status: z.enum(["pending", "in_progress", "completed", "written_off"]) })).mutation(({ input }) => updateMaintenanceStatus(input.id, input.status, input.vehicleId)),
+  }),
 });
 
 export type AppRouter = typeof appRouter;

@@ -1,4 +1,4 @@
-import { COOKIE_NAME, ONE_YEAR_MS, OAUTH_STATE_COOKIE, decodeOAuthState } from "@shared/const";
+import { COOKIE_NAME, ONE_YEAR_MS, OAUTH_STATE_COOKIE, decodeOAuthState, encodeOAuthState } from "@shared/const";
 import { parse as parseCookieHeader } from "cookie";
 import type { Express, Request, Response } from "express";
 import * as db from "../db";
@@ -6,11 +6,49 @@ import { getSessionCookieOptions } from "./cookies";
 import { sdk } from "./sdk";
 
 function getQueryParam(req: Request, key: string): string | undefined {
-  const value = req.query[key];
+  const value = req.query?.[key];
   return typeof value === "string" ? value : undefined;
 }
 
+function requestOrigin(req: Request) {
+  const forwardedProto = String(req.headers["x-forwarded-proto"] ?? "").split(",")[0].trim();
+  const protocol = forwardedProto === "https" || req.protocol === "https" ? "https" : "http";
+  return `${protocol}://${req.get("host")}`;
+}
+
+export function buildOAuthRedirectUri(req: Request, frontendOrigin?: string) {
+  const fallback = requestOrigin(req);
+  if (!frontendOrigin) return `${fallback}/api/oauth/callback`;
+  try {
+    const origin = new URL(frontendOrigin);
+    if (!["http:", "https:"].includes(origin.protocol) || origin.username || origin.password || origin.pathname !== "/" || origin.search || origin.hash) return `${fallback}/api/oauth/callback`;
+    return `${origin.origin}/api/oauth/callback`;
+  } catch {
+    return `${fallback}/api/oauth/callback`;
+  }
+}
+
 export function registerOAuthRoutes(app: Express) {
+  app.get("/api/oauth/start", (req: Request, res: Response) => {
+    const oauthPortalUrl = process.env.VITE_OAUTH_PORTAL_URL;
+    const appId = process.env.VITE_APP_ID;
+    if (!oauthPortalUrl || !appId) {
+      res.status(500).json({ error: "OAuth is not configured" });
+      return;
+    }
+    const nonce = crypto.randomUUID();
+    const redirectUri = buildOAuthRedirectUri(req, getQueryParam(req, "origin"));
+    const state = encodeOAuthState({ redirectUri, nonce });
+    const secureOAuth = redirectUri.startsWith("https://");
+    res.cookie(OAUTH_STATE_COOKIE, nonce, { httpOnly: true, path: "/", maxAge: 10 * 60 * 1000, sameSite: secureOAuth ? "none" : "lax", secure: secureOAuth });
+    const portal = new URL(`${oauthPortalUrl}/app-auth`);
+    portal.searchParams.set("appId", appId);
+    portal.searchParams.set("redirectUri", redirectUri);
+    portal.searchParams.set("state", state);
+    portal.searchParams.set("type", "signIn");
+    res.redirect(302, portal.toString());
+  });
+
   app.get("/api/oauth/callback", async (req: Request, res: Response) => {
     const code = getQueryParam(req, "code");
     const state = getQueryParam(req, "state");
@@ -29,7 +67,8 @@ export function registerOAuthRoutes(app: Express) {
       res.status(403).json({ error: "invalid oauth state" });
       return;
     }
-    res.clearCookie(OAUTH_STATE_COOKIE, { path: "/", secure: true, sameSite: "none" });
+    const secureOAuth = req.secure || req.headers["x-forwarded-proto"] === "https";
+    res.clearCookie(OAUTH_STATE_COOKIE, { path: "/", secure: secureOAuth, sameSite: secureOAuth ? "none" : "lax" });
 
     try {
       const tokenResponse = await sdk.exchangeCodeForToken(code, state);

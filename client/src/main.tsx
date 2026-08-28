@@ -5,7 +5,6 @@ import { httpBatchLink, TRPCClientError } from "@trpc/client";
 import { createRoot } from "react-dom/client";
 import superjson from "superjson";
 import App from "./App";
-import { startLogin } from "./const";
 import "./index.css";
 
 const queryClient = new QueryClient();
@@ -14,11 +13,13 @@ const redirectToLoginIfUnauthorized = (error: unknown) => {
   if (!(error instanceof TRPCClientError)) return;
   if (typeof window === "undefined") return;
 
-  const isUnauthorized = error.message === UNAUTHED_ERR_MSG;
-
-  if (!isUnauthorized) return;
-
-  startLogin();
+  // Do not start OAuth from a global query/mutation error listener. Multiple
+  // protected queries can fail together and overwrite the one-time OAuth state
+  // cookie, producing "invalid oauth state" on the callback. DashboardLayout
+  // owns the single, user-initiated login flow instead.
+  if (error.message === UNAUTHED_ERR_MSG) {
+    console.warn("[Auth] Session required; waiting for the dashboard login flow");
+  }
 };
 
 queryClient.getQueryCache().subscribe(event => {

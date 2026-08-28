@@ -1,0 +1,1 @@
+ALTER TABLE `contractOperations` MODIFY COLUMN `operationType` enum('new_contract','extension','payment','additional_fee','rate_update','vehicle_swap','suspend','close','return') NOT NULL;

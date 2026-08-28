@@ -1,0 +1,1 @@
+ALTER TABLE `maintenanceRecords` ADD `mileage` int;

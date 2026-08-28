@@ -1,5 +1,76 @@
 {
   "version": "7",
   "dialect": "mysql",
-  "entries": []
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1787839784968,
+      "tag": "0000_swift_george_stacy",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1787840551559,
+      "tag": "0001_fat_old_lace",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1787880334659,
+      "tag": "0002_careless_gateway",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1787895624504,
+      "tag": "0003_volatile_colonel_america",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1787934739486,
+      "tag": "0004_serious_the_enforcers",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1787937973411,
+      "tag": "0005_demonic_karma",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1787938850149,
+      "tag": "0006_marvelous_steel_serpent",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1787939716491,
+      "tag": "0007_careless_bushwacker",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1787943549215,
+      "tag": "0008_bored_fallen_one",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1787943600326,
+      "tag": "0009_cute_phalanx",
+      "breakpoints": true
+    }
+  ]
 }

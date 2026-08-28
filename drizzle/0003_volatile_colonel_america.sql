@@ -1,0 +1,1 @@
+ALTER TABLE `contractOperations` ADD `previousVehicleId` int;

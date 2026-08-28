@@ -1,0 +1,1 @@
+ALTER TABLE `maintenanceRecords` ADD `maintenanceType` enum('maintenance','oil_change') DEFAULT 'maintenance' NOT NULL;

@@ -1,42 +1,23 @@
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
+import NewContractPage from "@/pages/NewContractPage";
+import ContractHistoryPage from "@/pages/ContractHistoryPage";
+import ContractDetailsPage from "@/pages/ContractDetailsPage";
+import OperationsPage from "./pages/OperationsPage";
+import VehicleDetailsPage from "./pages/VehicleDetailsPage";
+import ReferenceLedgerPage from "./pages/ReferenceLedgerPage";
+import CustomersPage from "./pages/CustomersPage";
+import CustomerDetailsPage from "./pages/CustomerDetailsPage";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
 
 function Router() {
-  // make sure to consider if you need authentication for certain routes
-  return (
-    <Switch>
-      <Route path={"/"} component={Home} />
-      <Route path={"/404"} component={NotFound} />
-      {/* Final fallback route */}
-      <Route component={NotFound} />
-    </Switch>
-  );
+  return <Switch><Route path="/" component={Home} /><Route path="/contracts/new" component={NewContractPage} /><Route path="/contracts/history" component={ContractHistoryPage} /><Route path="/contracts/active" component={OperationsPage} /><Route path="/contracts/overdue" component={OperationsPage} /><Route path="/contracts/suspended" component={OperationsPage} /><Route path="/contracts/:id" component={ContractDetailsPage} /><Route path="/vehicles" component={OperationsPage} /><Route path="/vehicles/:id" component={VehicleDetailsPage} /><Route path="/customers" component={CustomersPage} /><Route path="/customers/:id" component={CustomerDetailsPage} /><Route path="/accounting" component={OperationsPage} /><Route path="/payments" component={ReferenceLedgerPage} /><Route path="/returns" component={ReferenceLedgerPage} /><Route path="/maintenance" component={OperationsPage} /><Route path="/reports" component={OperationsPage} /><Route path="/404" component={NotFound} /><Route component={NotFound} /></Switch>;
 }
 
-// NOTE: About Theme
-// - First choose a default theme according to your design style (dark or light bg), than change color palette in index.css
-//   to keep consistent foreground/background color across components
-// - If you want to make theme switchable, pass `switchable` ThemeProvider and use `useTheme` hook
-
-function App() {
-  return (
-    <ErrorBoundary>
-      <ThemeProvider
-        defaultTheme="light"
-        // switchable
-      >
-        <TooltipProvider>
-          <Toaster />
-          <Router />
-        </TooltipProvider>
-      </ThemeProvider>
-    </ErrorBoundary>
-  );
+export default function App() {
+  return <ErrorBoundary><ThemeProvider defaultTheme="light"><TooltipProvider><Toaster position="top-left" richColors /><Router /></TooltipProvider></ThemeProvider></ErrorBoundary>;
 }
-
-export default App;

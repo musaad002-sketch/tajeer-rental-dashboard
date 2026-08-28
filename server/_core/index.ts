@@ -6,8 +6,30 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
+import { sdk } from "./sdk";
+import { getDb, getPaymentForReceipt } from "../db";
+import { contracts, customers, vehicles } from "../../drizzle/schema";
+import { eq } from "drizzle-orm";
+import { formatReceiptData, generateContractPdf, generateReceiptPdf } from "../pdf";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
+
+export function registerReceiptPdfRoute(app: express.Express) {
+  app.get("/api/pdf/receipt/:paymentId", async (req, res) => {
+    try {
+      const user = await sdk.authenticateRequest(req);
+      if (!user) return res.status(401).send("Unauthorized");
+      const paymentId = parseInt(req.params.paymentId);
+      if (!Number.isInteger(paymentId) || paymentId < 1) return res.status(400).send("Invalid payment id");
+      const row = await getPaymentForReceipt(paymentId);
+      if (!row) return res.status(404).send("Payment not found");
+      const pdf = await generateReceiptPdf(formatReceiptData(row));
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename=receipt-${row.payment.id}.pdf`);
+      res.send(Buffer.from(pdf));
+    } catch (e) { res.status(500).send("Error generating PDF"); }
+  });
+}
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -28,7 +50,7 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
   throw new Error(`No available port found starting from ${startPort}`);
 }
 
-async function startServer() {
+export async function startServer() {
   const app = express();
   const server = createServer(app);
   // Configure body parser with larger size limit for file uploads
@@ -36,6 +58,26 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   registerStorageProxy(app);
   registerOAuthRoutes(app);
+
+  // PDF Endpoints
+  app.get("/api/pdf/contract/:id", async (req, res) => {
+    try {
+      const user = await sdk.authenticateRequest(req);
+      if (!user) return res.status(401).send("Unauthorized");
+      const db = await getDb();
+      if (!db) return res.status(503).send("Database unavailable");
+      const id = parseInt(req.params.id);
+      const [row] = await db.select({ contract: contracts, customer: customers, vehicle: vehicles }).from(contracts).leftJoin(customers, eq(contracts.customerId, customers.id)).leftJoin(vehicles, eq(contracts.vehicleId, vehicles.id)).where(eq(contracts.id, id)).limit(1);
+      if (!row) return res.status(404).send("Contract not found");
+      const pdf = await generateContractPdf({ contractNumber: row.contract.contractNumber, customerName: row.customer?.fullName, identityNumber: row.customer?.identityNumber, vehicleMake: row.vehicle?.make, vehicleModel: row.vehicle?.model, plateNumber: row.vehicle?.plateNumber, startDate: row.contract.startDate, expectedReturnDate: row.contract.expectedReturnDate, totalAmount: row.contract.totalAmount, paidAmount: row.contract.paidAmount });
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename=contract-${row.contract.contractNumber}.pdf`);
+      res.send(Buffer.from(pdf));
+    } catch (e) { res.status(500).send("Error generating PDF"); }
+  });
+
+  registerReceiptPdfRoute(app);
+
   // tRPC API
   app.use(
     "/api/trpc",
@@ -63,4 +105,4 @@ async function startServer() {
   });
 }
 
-startServer().catch(console.error);
+if (import.meta.url === `file://${process.argv[1]}`) startServer().catch(console.error);
