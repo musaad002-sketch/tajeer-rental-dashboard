@@ -218,14 +218,12 @@ function VehicleEditor({ vehicle }: { vehicle: { id: number; mileage: number; la
     ["lastOilChangeMileage", "العداد عند تغيير الزيت", "number"],
     ["lastOilChangeDate", "تاريخ آخر تغيير زيت", "date"],
     ["oilChangeInterval", "فترة تغيير الزيت (كم)", "number"],
-    ["insuranceExpiryDate", "انتهاء التأمين", "date"],
-    ["inspectionExpiryDate", "انتهاء الفحص الدوري", "date"],
-    ["registrationExpiryDate", "انتهاء الاستمارة", "date"],
+    ["insuranceExpiryDate", "تاريخ تجديد التأمين", "date"], ["inspectionExpiryDate", "تاريخ تجديد الفحص الدوري", "date"], ["registrationExpiryDate", "تاريخ تجديد الاستمارة", "date"],
   ] as const;
 
   return (
     <Card className="border-0 shadow-sm">
-      <CardHeader><CardTitle className="text-base">تعديل العداد والوثائق</CardTitle><p className="text-xs text-slate-400">متاح للمستخدم التشغيلي المعتمد لتحديث القراءة بعد كل عقد أو عملية، وتظهر آخر قيمة محفوظة في ملف السيارة.</p></CardHeader>
+      <CardHeader><CardTitle className="text-base">تحديث بيانات السيارة والوثائق</CardTitle><p className="text-xs leading-6 text-slate-400">حدّث العداد من هنا عند الحاجة، وسجّل تاريخ التجديد الجديد للتأمين أو الفحص الدوري أو الاستمارة ليظهر في ملف السيارة والتنبيهات.</p></CardHeader>
       <CardContent>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {fields.map(([key, label, type]) => (
