@@ -7,6 +7,7 @@ import { nextContractNumber as computeNextContractNumber } from "../shared/contr
 import { extendReturnDate, isFinanciallyDistressed } from "../shared/contractCalculation";
 import { addAdditionalFee, calculateRateAdjustedTotal } from "../shared/contractFinance";
 import { isMileageAdvanceValid } from "../shared/vehicleMaintenance";
+import { allocatePayment } from "../shared/paymentAllocation";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -43,12 +44,10 @@ export async function listContracts(status?: "active" | "overdue" | "suspended" 
   const rows = await db.select({ contract: contracts, customer: customers, vehicle: vehicles }).from(contracts).leftJoin(customers, eq(contracts.customerId, customers.id)).leftJoin(vehicles, eq(contracts.vehicleId, vehicles.id)).where(status ? eq(contracts.status, status) : undefined).orderBy(desc(contracts.createdAt));
   const ids = rows.map((row) => row.contract.id);
   const paymentRows = ids.length ? await db.select().from(payments).where(inArray(payments.contractId, ids)).orderBy(desc(payments.createdAt)) : [];
-  const latestPaymentByContract = new Map<number, typeof payments.$inferSelect>();
-  paymentRows.forEach((payment) => { if (!latestPaymentByContract.has(payment.contractId)) latestPaymentByContract.set(payment.contractId, payment); });
   return rows.map((row) => {
-    const currentOutstanding = Math.max(0, Number(row.contract.totalAmount) - Number(row.contract.paidAmount));
-    const latestPayment = latestPaymentByContract.get(row.contract.id);
-    const previousOutstanding = latestPayment ? Math.min(Number(row.contract.totalAmount), currentOutstanding + Number(latestPayment.amount)) : currentOutstanding;
+    const outstanding = Math.max(0, Number(row.contract.totalAmount) - Number(row.contract.paidAmount));
+    const currentCharge = Math.min(outstanding, Number(row.contract.rentalAmount));
+    const previousOutstanding = Math.max(0, outstanding - currentCharge);
     return { ...row, previousOutstanding: previousOutstanding.toFixed(2) };
   });
 }
@@ -209,6 +208,14 @@ export async function recordContractOperation(input: { contractId?: number; cont
   if ((input.operation === "additional_fee" || input.operation === "rate_update") && (!input.amount || !Number.isFinite(Number(input.amount)) || Number(input.amount) <= 0)) throw new Error(input.operation === "additional_fee" ? "أدخل قيمة الرسم الإضافي" : "أدخل سعر التأجير الجديد");
   let previousVehicleId: number | undefined;
   let operationDetails = input.details;
+  if (input.operation === "payment" && input.amount) {
+    const outstanding = Math.max(0, Number(contract.totalAmount) - Number(contract.paidAmount));
+    const currentCharge = Math.min(outstanding, Number(contract.rentalAmount));
+    const previousOutstanding = Math.max(0, outstanding - currentCharge);
+    const allocation = allocatePayment({ paymentAmount: Number(input.amount), previousOutstanding, currentOutstanding: currentCharge });
+    const allocationNote = `تخصيص الدفعة: السابق ${allocation.appliedToPrevious.toFixed(2)} ر.س؛ الحالي ${allocation.appliedToCurrent.toFixed(2)} ر.س${allocation.unapplied > 0 ? `؛ رصيد زائد ${allocation.unapplied.toFixed(2)} ر.س` : ""}`;
+    operationDetails = [operationDetails, allocationNote].filter(Boolean).join("؛ ");
+  }
   if (input.vehicleMileage !== undefined) {
     if (!Number.isInteger(input.vehicleMileage) || input.vehicleMileage < 0) throw new Error("قراءة العداد يجب أن تكون رقماً صحيحاً غير سالب");
     const targetVehicleId = contract.vehicleId;
