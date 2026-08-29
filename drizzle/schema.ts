@@ -109,6 +109,17 @@ export const maintenanceRecords = mysqlTable("maintenanceRecords", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
+export const deletionAudits = mysqlTable("deletionAudits", {
+  id: int("id").autoincrement().primaryKey(),
+  entityType: varchar("entityType", { length: 32 }).notNull(),
+  entityId: int("entityId").notNull(),
+  contractId: int("contractId"),
+  snapshot: text("snapshot").notNull(),
+  reason: varchar("reason", { length: 240 }).notNull(),
+  deletedBy: int("deletedBy"),
+  deletedAt: timestamp("deletedAt").defaultNow().notNull(),
+}, (table) => ({ contractIdx: index("deletion_audits_contract_idx").on(table.contractId) }));
+
 export const officeLiabilities = mysqlTable("officeLiabilities", {
   id: int("id").autoincrement().primaryKey(),
   category: varchar("category", { length: 100 }).notNull(),

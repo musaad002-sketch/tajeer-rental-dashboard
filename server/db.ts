@@ -11,6 +11,7 @@ import { addAdditionalFee, calculateRateAdjustedTotal } from "../shared/contract
 import { isMileageAdvanceValid } from "../shared/vehicleMaintenance";
 import { allocatePayment } from "../shared/paymentAllocation";
 import { calculateReturnSettlement } from "../shared/returnSettlement";
+import { belongsToGeneralOutstanding } from "../shared/outstandingStatus";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -473,10 +474,10 @@ export async function getAccountingSummary() {
   const db = await getDb(); if (!db) return { revenue: "0.00", outstanding: "0.00", paymentsCount: 0 };
   const [revenue, contractRows, paymentsCount] = await Promise.all([
     db.select({ amount: sql<string>`coalesce(sum(${payments.amount}), 0)` }).from(payments),
-    db.select({ totalAmount: contracts.totalAmount, paidAmount: contracts.paidAmount, expectedReturnDate: contracts.expectedReturnDate, actualReturnDate: contracts.actualReturnDate, rentalAmount: contracts.rentalAmount, type: contracts.type }).from(contracts),
+    db.select({ totalAmount: contracts.totalAmount, paidAmount: contracts.paidAmount, expectedReturnDate: contracts.expectedReturnDate, actualReturnDate: contracts.actualReturnDate, rentalAmount: contracts.rentalAmount, type: contracts.type, status: contracts.status }).from(contracts),
     db.select({ count: sql<number>`count(*)` }).from(payments),
   ]);
-  const outstanding = contractRows.reduce((sum, contract) => {
+  const outstanding = contractRows.filter((contract) => belongsToGeneralOutstanding(contract.status)).reduce((sum, contract) => {
     const totals = calculateContractTotals({ baseTotal: contract.totalAmount, expectedReturnDate: contract.expectedReturnDate, rentalAmount: contract.rentalAmount, type: contract.type, actualReturnDate: contract.actualReturnDate });
     return sum + Math.max(0, Number(totals.grandTotal) - Number(contract.paidAmount));
   }, 0);
