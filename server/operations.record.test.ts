@@ -88,3 +88,18 @@ it("passes fee and rate update operations with their financial amount", async ()
   expect(recordMock).toHaveBeenNthCalledWith(1, { contractNumber: "1011", operation: "additional_fee", amount: "75", details: "تنظيف إضافي", createdBy: 7 });
   expect(recordMock).toHaveBeenNthCalledWith(2, { contractNumber: "1011", operation: "rate_update", amount: "220", details: "سعر موسمي", createdBy: 7 });
 });
+
+
+it("passes transfer payments with reason details and the new mileage reading", async () => {
+  recordMock.mockClear();
+  const caller = appRouter.createCaller(context);
+  await caller.operations.record({ contractNumber: "1011", operation: "payment", amount: "175", paymentMethod: "transfer", vehicleMileage: 90500, details: "كيلوات إضافية؛ العداد الجديد: 90500" });
+  expect(recordMock).toHaveBeenCalledWith({ contractNumber: "1011", operation: "payment", amount: "175", paymentMethod: "transfer", vehicleMileage: 90500, details: "كيلوات إضافية؛ العداد الجديد: 90500", createdBy: 7 });
+});
+
+it("passes international authorization fee as an additional amount", async () => {
+  recordMock.mockClear();
+  const caller = appRouter.createCaller(context);
+  await caller.operations.record({ contractNumber: "1011", operation: "additional_fee", amount: "50", details: "مبلغ إضافي؛ رسوم تفويض دولي" });
+  expect(recordMock).toHaveBeenCalledWith({ contractNumber: "1011", operation: "additional_fee", amount: "50", details: "مبلغ إضافي؛ رسوم تفويض دولي", createdBy: 7 });
+});
