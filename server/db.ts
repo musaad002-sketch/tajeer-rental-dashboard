@@ -10,6 +10,7 @@ import { calculateContractBalances } from "../shared/contractBalances";
 import { addAdditionalFee, calculateRateAdjustedTotal } from "../shared/contractFinance";
 import { isMileageAdvanceValid } from "../shared/vehicleMaintenance";
 import { allocatePayment } from "../shared/paymentAllocation";
+import { calculateReturnSettlement } from "../shared/returnSettlement";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -247,7 +248,14 @@ export async function recordContractOperation(input: { contractId?: number; cont
     const swapValidation = validateVehicleSwap(contract.vehicleId, input.vehicleId, replacementIsAvailable);
     if (!swapValidation.ok) throw new Error(swapValidation.reason);
     previousVehicleId = contract.vehicleId;
-    operationDetails = `تبديل السيارة: ${contract.vehicleId} ← ${input.vehicleId}${input.details ? `؛ ${input.details}` : ""}`;
+    const totals = calculateContractTotals({ baseTotal: contract.totalAmount, expectedReturnDate: contract.expectedReturnDate, rentalAmount: contract.rentalAmount, type: contract.type, actualReturnDate: contract.actualReturnDate });
+    const balances = calculateContractBalances({ baseTotal: totals.baseTotal, delayTotal: totals.delayTotal, paidAmount: contract.paidAmount });
+    operationDetails = `تبديل السيارة: ${contract.vehicleId} ← ${input.vehicleId}؛ نقل الحسابات: المدفوع ${Number(contract.paidAmount).toFixed(2)} ر.س، السابق ${balances.previousOutstanding} ر.س، التأخير ${balances.currentOutstanding} ر.س، الإجمالي ${balances.grandOutstanding} ر.س${input.details ? `؛ ${input.details}` : ""}`;
+  }
+  let returnSettlement: ReturnType<typeof calculateReturnSettlement> | undefined;
+  if (input.operation === "return") {
+    returnSettlement = calculateReturnSettlement({ expectedReturnDate: contract.expectedReturnDate, returnedAt: new Date(), rentalAmount: contract.rentalAmount, type: contract.type });
+    operationDetails = `استرجاع مبكر: الأيام المتبقية ${returnSettlement.remainingDays} يوم × ${returnSettlement.dailyRate} ر.س = ${returnSettlement.remainingValue} ر.س${input.details ? `؛ ${input.details}` : ""}`;
   }
   await db.insert(contractOperations).values({ contractId, operation: input.operation, vehicleId: input.vehicleId, previousVehicleId, amount: input.amount ?? "0", paymentMethod: input.paymentMethod, details: operationDetails, createdBy: input.createdBy });
   if (effects.shouldCreatePayment && input.amount) {
@@ -271,6 +279,10 @@ export async function recordContractOperation(input: { contractId?: number; cont
     await db.update(vehicles).set({ status: "available" }).where(eq(vehicles.id, contract.vehicleId));
     await db.update(vehicles).set({ status: "rented" }).where(eq(vehicles.id, input.vehicleId!));
     await db.update(contracts).set({ vehicleId: input.vehicleId }).where(eq(contracts.id, contractId));
+  }
+  if (input.operation === "return" && returnSettlement) {
+    const adjustedTotal = Math.max(0, Number(contract.totalAmount) - Number(returnSettlement.remainingValue));
+    await db.update(contracts).set({ totalAmount: adjustedTotal.toFixed(2), status: "returned", actualReturnDate: new Date() }).where(eq(contracts.id, contractId));
   }
   if (effects.contractStatus) await db.update(contracts).set({ status: effects.contractStatus }).where(eq(contracts.id, contractId));
   if (effects.releasesVehicle) await db.update(vehicles).set({ status: "available" }).where(eq(vehicles.id, contract.vehicleId));
