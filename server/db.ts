@@ -13,7 +13,7 @@ import { allocatePayment } from "../shared/paymentAllocation";
 import { calculateReturnSettlement } from "../shared/returnSettlement";
 import { belongsToGeneralOutstanding } from "../shared/outstandingStatus";
 import { calculateCloseSettlement } from "../shared/closeSettlement";
-import { statusAfterSuspendedSettlement } from "../shared/suspensionSettlement";
+import { calculateSuspensionSettlement, statusAfterSuspendedSettlement } from "../shared/suspensionSettlement";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -215,6 +215,11 @@ export async function recordContractOperation(input: { contractId?: number; cont
   let operationDetails = input.details;
   const operationAt = new Date();
   let statusAfterPayment: "active" | "overdue" | null = null;
+  let suspensionSettlement: ReturnType<typeof calculateSuspensionSettlement> | undefined;
+  if (input.operation === "suspend") {
+    suspensionSettlement = calculateSuspensionSettlement({ baseTotal: contract.totalAmount, expectedReturnDate: contract.expectedReturnDate, suspendedAt: operationAt, rentalAmount: contract.rentalAmount, type: contract.type, paidAmount: contract.paidAmount });
+    operationDetails = `تسوية التعليق حتى ${operationAt.toLocaleDateString("en-CA")}: خصم الأيام غير المستخدمة ${suspensionSettlement.remainingDays} يوم بقيمة ${suspensionSettlement.unusedValue} ر.س؛ المستحق حتى التعليق ${suspensionSettlement.amountDueThroughSuspension} ر.س؛ المتبقي السابق ${suspensionSettlement.balances.previousOutstanding} ر.س؛ المتبقي الحالي ${suspensionSettlement.balances.currentOutstanding} ر.س${input.details ? `؛ ${input.details}` : ""}`;
+  }
   if (input.operation === "payment" && input.amount) {
     const totals = calculateContractTotals({ baseTotal: contract.totalAmount, expectedReturnDate: contract.expectedReturnDate, rentalAmount: contract.rentalAmount, type: contract.type, actualReturnDate: contract.actualReturnDate });
     const balances = calculateContractBalances({ baseTotal: totals.baseTotal, delayTotal: totals.delayTotal, paidAmount: contract.paidAmount });
@@ -295,6 +300,7 @@ export async function recordContractOperation(input: { contractId?: number; cont
     await db.update(vehicles).set({ status: "rented" }).where(eq(vehicles.id, input.vehicleId!));
     await db.update(contracts).set({ vehicleId: input.vehicleId }).where(eq(contracts.id, contractId));
   }
+  if (input.operation === "suspend" && suspensionSettlement) await db.update(contracts).set({ totalAmount: suspensionSettlement.adjustedBase }).where(eq(contracts.id, contractId));
   if (input.operation === "return" && returnSettlement) {
     const adjustedTotal = Math.max(0, Number(contract.totalAmount) - Number(returnSettlement.remainingValue));
     await db.update(contracts).set({ totalAmount: adjustedTotal.toFixed(2), status: "returned", actualReturnDate: operationAt }).where(eq(contracts.id, contractId));
