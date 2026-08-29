@@ -40,7 +40,7 @@ export const appRouter = router({
   liabilities: router({
     list: protectedProcedure.query(() => listOfficeLiabilities()),
     summary: protectedProcedure.query(() => getOfficeLiabilitySummary()),
-    create: adminProcedure.input(z.object({ category: z.string().min(1), description: z.string().min(2), amount: z.string().min(1), dueDate: z.string().optional(), notes: z.string().optional() })).mutation(({ input, ctx }) => createOfficeLiability({ ...input, createdBy: ctx.user.id })),
+    create: adminProcedure.input(z.object({ category: z.string().min(1), description: z.string().min(2), amount: z.string().min(1), dueDate: z.string().optional(), notes: z.string().optional(), expenseReason: z.string().optional(), contractNumber: z.string().optional() })).mutation(({ input, ctx }) => createOfficeLiability({ ...input, createdBy: ctx.user.id })),
     update: adminProcedure.input(z.object({ id: z.number().int().positive(), category: z.string().min(1).optional(), description: z.string().min(2).optional(), amount: z.string().optional(), dueDate: z.string().nullable().optional(), notes: z.string().nullable().optional(), reason: z.string().trim().min(2) })).mutation(({ input, ctx }) => updateOfficeLiability({ ...input, updatedBy: ctx.user.id })),
     deleteSafely: adminProcedure.input(z.object({ id: z.number().int().positive(), reason: z.string().trim().min(2) })).mutation(({ input, ctx }) => deleteOfficeLiabilitySafely({ ...input, deletedBy: ctx.user.id })),
     pay: adminProcedure.input(z.object({ id: z.number().int().positive(), amount: z.string().min(1) })).mutation(({ input }) => recordOfficeLiabilityPayment(input.id, input.amount)),

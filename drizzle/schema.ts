@@ -133,6 +133,8 @@ export const officeLiabilities = mysqlTable("officeLiabilities", {
   dueDate: date("dueDate"),
   status: liabilityStatus.default("open").notNull(),
   notes: text("notes"),
+  expenseReason: varchar("expenseReason", { length: 240 }),
+  contractNumber: varchar("contractNumber", { length: 32 }),
   createdBy: int("createdBy"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

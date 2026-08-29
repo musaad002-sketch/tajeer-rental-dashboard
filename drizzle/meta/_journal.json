@@ -85,6 +85,13 @@
       "when": 1788038237345,
       "tag": "0011_chief_fat_cobra",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "5",
+      "when": 1788041913354,
+      "tag": "0012_zippy_jasper_sitwell",
+      "breakpoints": true
     }
   ]
 }

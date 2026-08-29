@@ -32,7 +32,7 @@ describe("live workflow integrations", () => {
   it.skipIf(!process.env.DATABASE_URL)("returns separated vehicle revenue totals and monthly collections", async () => {
     const caller = appRouter.createCaller(testContext);
     const report = await caller.reports.vehicleRevenue();
-    expect(report.totals).toEqual(expect.objectContaining({ contractValue: expect.any(String), collected: expect.any(String), cash: expect.any(String), network: expect.any(String), outstanding: expect.any(String) }));
+    expect(report.totals).toEqual(expect.objectContaining({ contractValue: expect.any(String), collected: expect.any(String), cash: expect.any(String), network: expect.any(String), outstanding: expect.any(String), excludedOutstanding: expect.any(String), expenses: expect.any(String), netRevenue: expect.any(String) }));
     expect(report.vehicles.every((row) => typeof row.vehicleId === "number" && Array.isArray(row.months))).toBe(true);
     expect(report.vehicles.every((row) => Number(row.collected) >= 0 && Number(row.cash) >= 0 && Number(row.network) >= 0 && Number(row.outstanding) >= 0)).toBe(true);
   }, 15000);
