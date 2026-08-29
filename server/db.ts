@@ -263,14 +263,16 @@ export async function recordContractOperation(input: { contractId?: number; cont
   let closeSettlement: ReturnType<typeof calculateCloseSettlement> | undefined;
   if (input.operation === "close") {
     closeSettlement = calculateCloseSettlement({ baseTotal: contract.totalAmount, expectedReturnDate: contract.expectedReturnDate, closedAt: operationAt, rentalAmount: contract.rentalAmount, type: contract.type, paidAmount: contract.paidAmount });
-    operationDetails = `تسوية الإغلاق: خصم أيام غير مستخدمة ${closeSettlement.remainingDays} يوم بقيمة ${closeSettlement.unusedValue} ر.س؛ الرصيد السابق ${closeSettlement.balances.previousOutstanding} ر.س؛ الرصيد الحالي ${closeSettlement.balances.currentOutstanding} ر.س${input.details ? `؛ ${input.details}` : ""}`;
-    if (!closeSettlement.canClose) throw new Error(`لا يمكن إغلاق العقد: بقي رصيد ${closeSettlement.balances.grandOutstanding} ر.س بعد خصم الأيام غير المستخدمة. علّق العقد أو سجّل دفعة أولاً.`);
+    operationDetails = `تسوية الإغلاق حتى ${operationAt.toLocaleDateString("en-CA")}: المستحق حتى يوم الإغلاق ${closeSettlement.amountDueThroughClose} ر.س؛ الأيام غير المستخدمة ${closeSettlement.remainingDays} يوم بقيمة ${closeSettlement.unusedValue} ر.س؛ الرصيد السابق ${closeSettlement.balances.previousOutstanding} ر.س؛ الرصيد الحالي ${closeSettlement.balances.currentOutstanding} ر.س${closeSettlement.shouldRecordReturn ? `؛ رصيد دائن للعميل ${closeSettlement.customerCredit} ر.س؛ رُحّلت السيارة إلى سجل الاسترجاعات` : ""}${input.details ? `؛ ${input.details}` : ""}`;
+    if (!closeSettlement.canClose) throw new Error(`لا يمكن إغلاق العقد: بقي رصيد ${closeSettlement.balances.grandOutstanding} ر.س حتى يوم الإغلاق فقط. علّق العقد أو سجّل دفعة أولاً.`);
   }
   if (input.operation === "return") {
     returnSettlement = calculateReturnSettlement({ expectedReturnDate: contract.expectedReturnDate, returnedAt: operationAt, rentalAmount: contract.rentalAmount, type: contract.type });
     operationDetails = `استرجاع مبكر: الأيام المتبقية ${returnSettlement.remainingDays} يوم × ${returnSettlement.dailyRate} ر.س = ${returnSettlement.remainingValue} ر.س${input.details ? `؛ ${input.details}` : ""}`;
   }
-  await db.insert(contractOperations).values({ contractId, operation: input.operation, vehicleId: input.vehicleId, previousVehicleId, amount: input.amount ?? "0", paymentMethod: input.paymentMethod, details: operationDetails, createdBy: input.createdBy });
+  const operationToPersist = input.operation === "close" && closeSettlement?.shouldRecordReturn ? "return" : input.operation;
+  const operationVehicleId = input.operation === "close" || input.operation === "return" ? contract.vehicleId : input.vehicleId;
+  await db.insert(contractOperations).values({ contractId, operation: operationToPersist, vehicleId: operationVehicleId, previousVehicleId, amount: input.operation === "close" && closeSettlement?.shouldRecordReturn ? closeSettlement.customerCredit : input.amount ?? "0", paymentMethod: input.paymentMethod, details: operationDetails, createdBy: input.createdBy });
   if (effects.shouldCreatePayment && input.amount) {
     const paid = Number(contract.paidAmount) + Number(input.amount);
     await db.update(contracts).set({ paidAmount: paid.toFixed(2), ...(statusAfterPayment ? { status: statusAfterPayment } : {}) }).where(eq(contracts.id, contractId));
@@ -297,8 +299,8 @@ export async function recordContractOperation(input: { contractId?: number; cont
     const adjustedTotal = Math.max(0, Number(contract.totalAmount) - Number(returnSettlement.remainingValue));
     await db.update(contracts).set({ totalAmount: adjustedTotal.toFixed(2), status: "returned", actualReturnDate: operationAt }).where(eq(contracts.id, contractId));
   }
-  if (input.operation === "close" && closeSettlement) await db.update(contracts).set({ totalAmount: closeSettlement.adjustedBase, actualReturnDate: operationAt }).where(eq(contracts.id, contractId));
-  if (effects.contractStatus) await db.update(contracts).set({ status: effects.contractStatus }).where(eq(contracts.id, contractId));
+  if (input.operation === "close" && closeSettlement) await db.update(contracts).set({ totalAmount: closeSettlement.adjustedBase, actualReturnDate: operationAt, status: closeSettlement.shouldRecordReturn ? "returned" : "closed" }).where(eq(contracts.id, contractId));
+  if (effects.contractStatus && !(input.operation === "close" && closeSettlement?.shouldRecordReturn)) await db.update(contracts).set({ status: effects.contractStatus }).where(eq(contracts.id, contractId));
   if (effects.releasesVehicle) await db.update(vehicles).set({ status: "available" }).where(eq(vehicles.id, contract.vehicleId));
   if (input.operation === "return") await db.update(contracts).set({ status: "returned", actualReturnDate: new Date() }).where(eq(contracts.id, contractId));
 }
