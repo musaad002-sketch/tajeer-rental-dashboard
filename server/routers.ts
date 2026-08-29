@@ -6,7 +6,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { isValidVehicleModelYear } from "../shared/vehicleRules";
 import { permissionKeys } from "../shared/permissions";
-import { createCustomer, createMaintenance, createOfficeLiability, createContract, deleteContractSafely, deleteOperationSafely, deletePaymentSafely, deleteVehicle, getAccountingSummary, listPayments, listReturns, getDashboardAlerts, getDashboardSummary, getFleetReport, getOfficeLiabilitySummary, getContractDetails, getCustomerDetails, getVehicleDetails, getVehicleRevenueReport, listAvailableVehicles, listContracts, listContractOperations, listAllContractOperations, listCustomers, listMaintenance, listOfficeLiabilities, listVehicles, recordContractOperation, recordOfficeLiabilityPayment, searchCustomerLedger, updateMaintenanceStatus, createVehicle, updateVehicle, updateContractRetroactively, updatePaymentRetroactively, upsertUser, getUserByUsername, listManagedUsers, createManagedUser, updateManagedUser, hashLocalPassword } from "./db";
+import { createCustomer, updateCustomer, deleteCustomerSafely, createMaintenance, updateMaintenance, deleteMaintenanceSafely, createOfficeLiability, updateOfficeLiability, deleteOfficeLiabilitySafely, createContract, deleteContractSafely, deleteOperationSafely, deletePaymentSafely, deleteVehicle, getAccountingSummary, listPayments, listReturns, getDashboardAlerts, getDashboardSummary, getFleetReport, getOfficeLiabilitySummary, getContractDetails, getCustomerDetails, getVehicleDetails, getVehicleRevenueReport, listAvailableVehicles, listContracts, listContractOperations, listAllContractOperations, listCustomers, listMaintenance, listOfficeLiabilities, listVehicles, recordContractOperation, recordOfficeLiabilityPayment, searchCustomerLedger, updateMaintenanceStatus, createVehicle, updateVehicle, updateContractRetroactively, updatePaymentRetroactively, upsertUser, getUserByUsername, listManagedUsers, createManagedUser, updateManagedUser, hashLocalPassword } from "./db";
 
 export const appRouter = router({
   system: systemRouter,
@@ -41,11 +41,13 @@ export const appRouter = router({
     list: protectedProcedure.query(() => listOfficeLiabilities()),
     summary: protectedProcedure.query(() => getOfficeLiabilitySummary()),
     create: adminProcedure.input(z.object({ category: z.string().min(1), description: z.string().min(2), amount: z.string().min(1), dueDate: z.string().optional(), notes: z.string().optional() })).mutation(({ input, ctx }) => createOfficeLiability({ ...input, createdBy: ctx.user.id })),
+    update: adminProcedure.input(z.object({ id: z.number().int().positive(), category: z.string().min(1).optional(), description: z.string().min(2).optional(), amount: z.string().optional(), dueDate: z.string().nullable().optional(), notes: z.string().nullable().optional(), reason: z.string().trim().min(2) })).mutation(({ input, ctx }) => updateOfficeLiability({ ...input, updatedBy: ctx.user.id })),
+    deleteSafely: adminProcedure.input(z.object({ id: z.number().int().positive(), reason: z.string().trim().min(2) })).mutation(({ input, ctx }) => deleteOfficeLiabilitySafely({ ...input, deletedBy: ctx.user.id })),
     pay: adminProcedure.input(z.object({ id: z.number().int().positive(), amount: z.string().min(1) })).mutation(({ input }) => recordOfficeLiabilityPayment(input.id, input.amount)),
   }),
   reports: router({
     fleet: protectedProcedure.query(() => getFleetReport()),
-    vehicleRevenue: protectedProcedure.query(() => getVehicleRevenueReport()),
+    vehicleRevenue: protectedProcedure.input(z.object({ from: z.string().date().optional(), to: z.string().date().optional() }).optional()).query(({ input }) => getVehicleRevenueReport(input ?? {})),
   }),
   payments: router({
     list: protectedProcedure.query(() => listPayments()),
@@ -75,6 +77,8 @@ export const appRouter = router({
     details: protectedProcedure.input(z.object({ id: z.number().int().positive() })).query(({ input }) => getCustomerDetails(input.id)),
     ledger: protectedProcedure.input(z.object({ query: z.string().min(1) })).query(({ input }) => searchCustomerLedger(input.query)),
     create: protectedProcedure.input(z.object({ identityNumber: z.string().min(1), fullName: z.string().min(2), phone: z.string().min(5), email: z.string().email().optional(), notes: z.string().optional() })).mutation(({ input }) => createCustomer(input)),
+    update: adminProcedure.input(z.object({ id: z.number().int().positive(), identityNumber: z.string().min(1).optional(), fullName: z.string().min(2).optional(), phone: z.string().min(5).optional(), email: z.string().email().nullable().optional(), notes: z.string().nullable().optional(), reason: z.string().trim().min(2) })).mutation(({ input, ctx }) => updateCustomer({ ...input, updatedBy: ctx.user.id })),
+    deleteSafely: adminProcedure.input(z.object({ id: z.number().int().positive(), reason: z.string().trim().min(2) })).mutation(({ input, ctx }) => deleteCustomerSafely({ ...input, deletedBy: ctx.user.id })),
   }),
   operations: router({
     list: protectedProcedure.input(z.object({ from: z.string().date().optional(), to: z.string().date().optional() }).optional()).query(({ input }) => listAllContractOperations(input)),
@@ -86,6 +90,8 @@ export const appRouter = router({
     list: protectedProcedure.query(() => listMaintenance()),
     create: protectedProcedure.input(z.object({ vehicleId: z.number().int().positive(), issueType: z.string().min(2), serviceType: z.enum(["maintenance", "oil_change"]).optional(), mileage: z.number().int().min(0).optional(), startDate: z.string(), status: z.enum(["pending", "in_progress"]).optional(), cost: z.string().optional(), notes: z.string().optional() })).mutation(({ input }) => createMaintenance(input)),
     updateStatus: protectedProcedure.input(z.object({ id: z.number().int().positive(), vehicleId: z.number().int().positive(), status: z.enum(["pending", "in_progress", "completed", "written_off"]) })).mutation(({ input }) => updateMaintenanceStatus(input.id, input.status, input.vehicleId)),
+    update: adminProcedure.input(z.object({ id: z.number().int().positive(), issueType: z.string().min(2).optional(), mileage: z.number().int().min(0).optional(), startDate: z.string().optional(), cost: z.string().optional(), notes: z.string().nullable().optional(), reason: z.string().trim().min(2) })).mutation(({ input, ctx }) => updateMaintenance({ ...input, updatedBy: ctx.user.id })),
+    deleteSafely: adminProcedure.input(z.object({ id: z.number().int().positive(), reason: z.string().trim().min(2) })).mutation(({ input, ctx }) => deleteMaintenanceSafely({ ...input, deletedBy: ctx.user.id })),
   }),
 });
 

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, desc, eq, inArray, like, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, like, lte, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { InsertUser, contractOperations, contracts, customers, deletionAudits, maintenanceRecords, officeLiabilities, payments, users, vehicles } from "../drizzle/schema";
 import { ENV } from "./_core/env";
@@ -177,6 +177,20 @@ export async function createCustomer(input: { identityNumber: string; fullName: 
   const result = await db.insert(customers).values(input); return result[0]?.insertId;
 }
 
+export async function updateCustomer(input: { id: number; identityNumber?: string; fullName?: string; phone?: string; email?: string | null; notes?: string | null; reason: string; updatedBy?: number }) {
+  const db = await getDb(); if (!db) throw new Error("Database unavailable"); if (!input.reason.trim()) throw new Error("سبب تعديل العميل مطلوب");
+  const existing = await db.select().from(customers).where(eq(customers.id, input.id)).limit(1); const customer = existing[0]; if (!customer) throw new Error("العميل غير موجود");
+  const values: Record<string, unknown> = {}; for (const key of ["identityNumber", "fullName", "phone", "email", "notes"] as const) if (input[key] !== undefined) values[key] = input[key];
+  await db.update(customers).set(values).where(eq(customers.id, input.id)); await db.insert(deletionAudits).values({ entityType: "customer_edit", entityId: input.id, snapshot: JSON.stringify({ before: customer, after: values }), reason: input.reason.trim(), deletedBy: input.updatedBy }); return { success: true as const };
+}
+
+export async function deleteCustomerSafely(input: { id: number; reason: string; deletedBy?: number }) {
+  const db = await getDb(); if (!db) throw new Error("Database unavailable"); if (!input.reason.trim()) throw new Error("سبب حذف العميل مطلوب");
+  const existing = await db.select().from(customers).where(eq(customers.id, input.id)).limit(1); const customer = existing[0]; if (!customer) throw new Error("العميل غير موجود");
+  const linked = await db.select({ id: contracts.id }).from(contracts).where(eq(contracts.customerId, input.id)).limit(1); if (linked[0]) throw new Error("لا يمكن حذف عميل مرتبط بعقود؛ عدّل بياناته أو أرشفه بدلاً من الحذف");
+  await db.insert(deletionAudits).values({ entityType: "customer", entityId: input.id, snapshot: JSON.stringify(customer), reason: input.reason.trim(), deletedBy: input.deletedBy }); await db.delete(customers).where(eq(customers.id, input.id)); return { success: true as const };
+}
+
 export async function createMaintenance(input: { vehicleId: number; issueType: string; serviceType?: "maintenance" | "oil_change"; mileage?: number; startDate: string; status?: "pending" | "in_progress"; cost?: string; notes?: string }) {
   const db = await getDb(); if (!db) throw new Error("Database unavailable");
   const vehicle = await db.select({ id: vehicles.id, status: vehicles.status, mileage: vehicles.mileage }).from(vehicles).where(eq(vehicles.id, input.vehicleId)).limit(1);
@@ -190,6 +204,20 @@ export async function createMaintenance(input: { vehicleId: number; issueType: s
   const result = await db.insert(maintenanceRecords).values({ ...input, mileage: recordedMileage, serviceType, status, cost: input.cost ?? "0", startDate: new Date(input.startDate), endDate: status === "completed" ? new Date(input.startDate) : null });
   await db.update(vehicles).set(serviceType === "oil_change" ? { mileage: recordedMileage, lastOilChangeMileage: recordedMileage, lastOilChangeDate: new Date(input.startDate), status: "available" } : { mileage: recordedMileage, status: "maintenance" }).where(eq(vehicles.id, input.vehicleId));
   return result[0]?.insertId;
+}
+
+export async function updateMaintenance(input: { id: number; issueType?: string; mileage?: number; startDate?: string; cost?: string; notes?: string | null; reason: string; updatedBy?: number }) {
+  const db = await getDb(); if (!db) throw new Error("Database unavailable"); if (!input.reason.trim()) throw new Error("سبب تعديل الصيانة مطلوب");
+  const existing = await db.select().from(maintenanceRecords).where(eq(maintenanceRecords.id, input.id)).limit(1); const record = existing[0]; if (!record) throw new Error("سجل الصيانة غير موجود");
+  const values: Record<string, unknown> = {}; if (input.issueType !== undefined) values.issueType = input.issueType; if (input.mileage !== undefined) values.mileage = input.mileage; if (input.startDate !== undefined) values.startDate = new Date(input.startDate); if (input.cost !== undefined) values.cost = input.cost; if (input.notes !== undefined) values.notes = input.notes;
+  await db.update(maintenanceRecords).set(values).where(eq(maintenanceRecords.id, input.id)); await db.insert(deletionAudits).values({ entityType: "maintenance_edit", entityId: input.id, snapshot: JSON.stringify({ before: record, after: values }), reason: input.reason.trim(), deletedBy: input.updatedBy }); return { success: true as const };
+}
+
+export async function deleteMaintenanceSafely(input: { id: number; reason: string; deletedBy?: number }) {
+  const db = await getDb(); if (!db) throw new Error("Database unavailable"); if (!input.reason.trim()) throw new Error("سبب حذف الصيانة مطلوب");
+  const existing = await db.select().from(maintenanceRecords).where(eq(maintenanceRecords.id, input.id)).limit(1); const record = existing[0]; if (!record) throw new Error("سجل الصيانة غير موجود");
+  await db.insert(deletionAudits).values({ entityType: "maintenance", entityId: input.id, snapshot: JSON.stringify(record), reason: input.reason.trim(), deletedBy: input.deletedBy }); await db.delete(maintenanceRecords).where(eq(maintenanceRecords.id, input.id));
+  const remaining = await db.select({ id: maintenanceRecords.id }).from(maintenanceRecords).where(and(eq(maintenanceRecords.vehicleId, record.vehicleId), eq(maintenanceRecords.status, "in_progress"))).limit(1); if (!remaining[0]) await db.update(vehicles).set({ status: "available" }).where(eq(vehicles.id, record.vehicleId)); return { success: true as const };
 }
 
 export async function listMaintenance() {
@@ -474,6 +502,19 @@ export async function createOfficeLiability(input: { category: string; descripti
   return db.insert(officeLiabilities).values({ ...input, dueDate: input.dueDate ? new Date(input.dueDate) : null, createdBy: input.createdBy });
 }
 
+export async function updateOfficeLiability(input: { id: number; category?: string; description?: string; amount?: string; dueDate?: string | null; notes?: string | null; reason: string; updatedBy?: number }) {
+  const db = await getDb(); if (!db) throw new Error("Database unavailable"); if (!input.reason.trim()) throw new Error("سبب تعديل الالتزام مطلوب");
+  const existing = await db.select().from(officeLiabilities).where(eq(officeLiabilities.id, input.id)).limit(1); const item = existing[0]; if (!item) throw new Error("الالتزام غير موجود");
+  const values: Record<string, unknown> = {}; for (const key of ["category", "description", "amount", "notes"] as const) if (input[key] !== undefined) values[key] = input[key]; if (input.dueDate !== undefined) values.dueDate = input.dueDate ? new Date(input.dueDate) : null;
+  await db.update(officeLiabilities).set(values).where(eq(officeLiabilities.id, input.id)); await db.insert(deletionAudits).values({ entityType: "liability_edit", entityId: input.id, snapshot: JSON.stringify({ before: item, after: values }), reason: input.reason.trim(), deletedBy: input.updatedBy }); return { success: true as const };
+}
+
+export async function deleteOfficeLiabilitySafely(input: { id: number; reason: string; deletedBy?: number }) {
+  const db = await getDb(); if (!db) throw new Error("Database unavailable"); if (!input.reason.trim()) throw new Error("سبب حذف الالتزام مطلوب");
+  const existing = await db.select().from(officeLiabilities).where(eq(officeLiabilities.id, input.id)).limit(1); const item = existing[0]; if (!item) throw new Error("الالتزام غير موجود");
+  await db.insert(deletionAudits).values({ entityType: "liability", entityId: input.id, snapshot: JSON.stringify(item), reason: input.reason.trim(), deletedBy: input.deletedBy }); await db.delete(officeLiabilities).where(eq(officeLiabilities.id, input.id)); return { success: true as const };
+}
+
 export async function recordOfficeLiabilityPayment(id: number, amount: string) {
   const db = await getDb(); if (!db) throw new Error("Database unavailable");
   const rows = await db.select().from(officeLiabilities).where(eq(officeLiabilities.id, id)).limit(1);
@@ -491,10 +532,12 @@ export async function getOfficeLiabilitySummary() {
   return { total: total.toFixed(2), paid: paid.toFixed(2), outstanding: Math.max(0, total - paid).toFixed(2), count: rows.length };
 }
 
-export async function getVehicleRevenueReport() {
+export async function getVehicleRevenueReport(filters: { from?: string; to?: string } = {}) {
   const db = await getDb();   if (!db) return { vehicles: [], totals: { baseContractValue: "0.00", contractValue: "0.00", delayTotal: "0.00", grandTotal: "0.00", collected: "0.00", outstanding: "0.00" } };
-  const contractsRows = await db.select({ contract: contracts, vehicle: vehicles }).from(contracts).leftJoin(vehicles, eq(contracts.vehicleId, vehicles.id));
-  const paymentsRows = await db.select({ payment: payments, contract: contracts, vehicle: vehicles }).from(payments).innerJoin(contracts, eq(payments.contractId, contracts.id)).leftJoin(vehicles, eq(contracts.vehicleId, vehicles.id));
+  const contractDateFilter = filters.from || filters.to ? and(filters.from ? gte(contracts.startDate, new Date(filters.from)) : undefined, filters.to ? lte(contracts.startDate, new Date(`${filters.to}T23:59:59`)) : undefined) : undefined;
+  const paymentDateFilter = filters.from || filters.to ? and(filters.from ? gte(payments.createdAt, new Date(filters.from)) : undefined, filters.to ? lte(payments.createdAt, new Date(`${filters.to}T23:59:59`)) : undefined) : undefined;
+  const contractsRows = await db.select({ contract: contracts, vehicle: vehicles }).from(contracts).leftJoin(vehicles, eq(contracts.vehicleId, vehicles.id)).where(contractDateFilter);
+  const paymentsRows = await db.select({ payment: payments, contract: contracts, vehicle: vehicles }).from(payments).innerJoin(contracts, eq(payments.contractId, contracts.id)).leftJoin(vehicles, eq(contracts.vehicleId, vehicles.id)).where(paymentDateFilter);
   const byVehicle = new Map<number, { vehicleId: number; vehicleName: string; plateNumber: string; baseContractValue: number; delayTotal: number; grandTotal: number; collected: number; cash: number; network: number; outstanding: number; months: Array<{ month: string; collected: string; cash: string; network: string }> }>();
   for (const row of contractsRows) {
     if (!row.vehicle) continue;
