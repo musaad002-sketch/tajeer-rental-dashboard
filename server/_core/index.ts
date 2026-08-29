@@ -23,7 +23,8 @@ export function registerReceiptPdfRoute(app: express.Express) {
       if (!Number.isInteger(paymentId) || paymentId < 1) return res.status(400).send("Invalid payment id");
       const row = await getPaymentForReceipt(paymentId);
       if (!row) return res.status(404).send("Payment not found");
-      const pdf = await generateReceiptPdf(formatReceiptData(row));
+      const origin = `${req.protocol}://${req.get("host")}`;
+      const pdf = await generateReceiptPdf(formatReceiptData(row), origin);
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader("Content-Disposition", `attachment; filename=receipt-${row.payment.id}.pdf`);
       res.send(Buffer.from(pdf));
@@ -69,7 +70,8 @@ export async function startServer() {
       const id = parseInt(req.params.id);
       const [row] = await db.select({ contract: contracts, customer: customers, vehicle: vehicles }).from(contracts).leftJoin(customers, eq(contracts.customerId, customers.id)).leftJoin(vehicles, eq(contracts.vehicleId, vehicles.id)).where(eq(contracts.id, id)).limit(1);
       if (!row) return res.status(404).send("Contract not found");
-      const pdf = await generateContractPdf({ contractNumber: row.contract.contractNumber, customerName: row.customer?.fullName, identityNumber: row.customer?.identityNumber, vehicleMake: row.vehicle?.make, vehicleModel: row.vehicle?.model, plateNumber: row.vehicle?.plateNumber, startDate: row.contract.startDate, expectedReturnDate: row.contract.expectedReturnDate, totalAmount: row.contract.totalAmount, paidAmount: row.contract.paidAmount });
+      const origin = `${req.protocol}://${req.get("host")}`;
+      const pdf = await generateContractPdf({ contractNumber: row.contract.contractNumber, customerName: row.customer?.fullName, identityNumber: row.customer?.identityNumber, vehicleMake: row.vehicle?.make, vehicleModel: row.vehicle?.model, plateNumber: row.vehicle?.plateNumber, startDate: row.contract.startDate, expectedReturnDate: row.contract.expectedReturnDate, totalAmount: row.contract.totalAmount, paidAmount: row.contract.paidAmount }, origin);
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader("Content-Disposition", `attachment; filename=contract-${row.contract.contractNumber}.pdf`);
       res.send(Buffer.from(pdf));
