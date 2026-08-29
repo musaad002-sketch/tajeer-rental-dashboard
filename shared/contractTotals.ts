@@ -5,10 +5,14 @@ export function calculateContractTotals(input: {
   expectedReturnDate: string | Date;
   rentalAmount: string | number;
   type: "daily" | "monthly";
+  actualReturnDate?: string | Date | null;
   asOf?: Date;
 }) {
   const baseTotal = Math.max(0, Number(input.baseTotal) || 0);
-  const late = calculateLateAmount(input.expectedReturnDate, input.rentalAmount, input.type, input.asOf);
+  const requestedAsOf = input.asOf ?? new Date();
+  const actualReturn = input.actualReturnDate ? new Date(input.actualReturnDate) : null;
+  const asOf = actualReturn && Number.isFinite(actualReturn.getTime()) && actualReturn < requestedAsOf ? actualReturn : requestedAsOf;
+  const late = calculateLateAmount(input.expectedReturnDate, input.rentalAmount, input.type, asOf);
   const delayTotal = Number(late.amount);
   return {
     baseTotal: formatMoney(baseTotal),

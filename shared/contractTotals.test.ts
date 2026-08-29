@@ -18,4 +18,19 @@ describe("calculateContractTotals", () => {
       grandTotal: "450.00",
     });
   });
+
+  it("stops delay at the actual return date", () => {
+    const totals = calculateContractTotals({
+      baseTotal: "300",
+      expectedReturnDate: "2026-08-28",
+      actualReturnDate: "2026-08-30",
+      rentalAmount: "50",
+      type: "daily",
+      asOf: new Date("2026-09-05T12:00:00Z"),
+    });
+
+    expect(totals.delayDays).toBe(2);
+    expect(totals.delayTotal).toBe("100.00");
+    expect(totals.grandTotal).toBe("400.00");
+  });
 });

@@ -46,7 +46,7 @@ export async function listContracts(status?: "active" | "overdue" | "suspended" 
   const ids = rows.map((row) => row.contract.id);
   const paymentRows = ids.length ? await db.select().from(payments).where(inArray(payments.contractId, ids)).orderBy(desc(payments.createdAt)) : [];
   return rows.map((row) => {
-    const totals = calculateContractTotals({ baseTotal: row.contract.totalAmount, expectedReturnDate: row.contract.expectedReturnDate, rentalAmount: row.contract.rentalAmount, type: row.contract.type });
+    const totals = calculateContractTotals({ baseTotal: row.contract.totalAmount, expectedReturnDate: row.contract.expectedReturnDate, rentalAmount: row.contract.rentalAmount, type: row.contract.type, actualReturnDate: row.contract.actualReturnDate });
     const outstanding = Math.max(0, Number(totals.grandTotal) - Number(row.contract.paidAmount));
     const currentCharge = Math.min(outstanding, Number(row.contract.rentalAmount));
     const previousOutstanding = Math.max(0, outstanding - currentCharge);
@@ -413,7 +413,7 @@ export async function getVehicleRevenueReport() {
   for (const row of contractsRows) {
     if (!row.vehicle) continue;
     const current = byVehicle.get(row.vehicle.id) ?? { vehicleId: row.vehicle.id, vehicleName: `${row.vehicle.make} ${row.vehicle.model}`, plateNumber: row.vehicle.plateNumber, baseContractValue: 0, delayTotal: 0, grandTotal: 0, collected: 0, cash: 0, network: 0, outstanding: 0, months: [] };
-    const totals = calculateContractTotals({ baseTotal: row.contract.totalAmount, expectedReturnDate: row.contract.expectedReturnDate, rentalAmount: row.contract.rentalAmount, type: row.contract.type });
+    const totals = calculateContractTotals({ baseTotal: row.contract.totalAmount, expectedReturnDate: row.contract.expectedReturnDate, rentalAmount: row.contract.rentalAmount, type: row.contract.type, actualReturnDate: row.contract.actualReturnDate });
     current.baseContractValue += Number(totals.baseTotal);
     current.delayTotal += Number(totals.delayTotal);
     current.grandTotal += Number(totals.grandTotal);
@@ -445,11 +445,11 @@ export async function getAccountingSummary() {
   const db = await getDb(); if (!db) return { revenue: "0.00", outstanding: "0.00", paymentsCount: 0 };
   const [revenue, contractRows, paymentsCount] = await Promise.all([
     db.select({ amount: sql<string>`coalesce(sum(${payments.amount}), 0)` }).from(payments),
-    db.select({ totalAmount: contracts.totalAmount, paidAmount: contracts.paidAmount, expectedReturnDate: contracts.expectedReturnDate, rentalAmount: contracts.rentalAmount, type: contracts.type }).from(contracts),
+    db.select({ totalAmount: contracts.totalAmount, paidAmount: contracts.paidAmount, expectedReturnDate: contracts.expectedReturnDate, actualReturnDate: contracts.actualReturnDate, rentalAmount: contracts.rentalAmount, type: contracts.type }).from(contracts),
     db.select({ count: sql<number>`count(*)` }).from(payments),
   ]);
   const outstanding = contractRows.reduce((sum, contract) => {
-    const totals = calculateContractTotals({ baseTotal: contract.totalAmount, expectedReturnDate: contract.expectedReturnDate, rentalAmount: contract.rentalAmount, type: contract.type });
+    const totals = calculateContractTotals({ baseTotal: contract.totalAmount, expectedReturnDate: contract.expectedReturnDate, rentalAmount: contract.rentalAmount, type: contract.type, actualReturnDate: contract.actualReturnDate });
     return sum + Math.max(0, Number(totals.grandTotal) - Number(contract.paidAmount));
   }, 0);
   return { revenue: String(revenue[0]?.amount ?? "0.00"), outstanding: outstanding.toFixed(2), paymentsCount: Number(paymentsCount[0]?.count ?? 0) };
