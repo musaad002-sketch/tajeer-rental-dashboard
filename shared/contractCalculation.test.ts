@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateContractAmounts, calculateLateAmount, lateDays, rentalDays } from "./contractCalculation";
+import { calculateContractAmounts, calculateLateAmount, lateDays, monthlyReturnDate, rentalDays } from "./contractCalculation";
 
 describe("contract calculation", () => {
   it("recalculates days and total when the expected return date changes", () => {
@@ -10,6 +10,13 @@ describe("contract calculation", () => {
 
   it("uses monthly units for monthly contracts", () => {
     expect(calculateContractAmounts("2026-08-28", "2026-10-01", "3000", "0", "monthly")).toEqual({ days: 34, units: 2, rate: 3000, total: "6000.00", paid: "0.00", remaining: "6000.00" });
+  });
+
+  it("calculates monthly return dates and clamps short months", () => {
+    expect(monthlyReturnDate("2026-01-15")).toBe("2026-02-15");
+    expect(monthlyReturnDate("2026-01-31")).toBe("2026-02-28");
+    expect(monthlyReturnDate("2028-01-31")).toBe("2028-02-29");
+    expect(monthlyReturnDate("2026-03-31")).toBe("2026-04-30");
   });
 
   it("does not keep a stale total when the date range is invalid", () => {

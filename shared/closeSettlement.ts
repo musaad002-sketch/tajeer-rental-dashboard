@@ -38,7 +38,7 @@ export function calculateCloseSettlement(input: {
   });
   const paidAmount = Math.max(0, Number(input.paidAmount) || 0);
   const amountDueThroughClose = Number(totals.grandTotal);
-  const customerCredit = Math.max(0, paidAmount - amountDueThroughClose);
+  const customerCredit = Math.min(paidAmount, Math.max(0, paidAmount - amountDueThroughClose));
   const hasSurplusPaidDays = earlySettlement.remainingDays > 0 && paidAmount > Number(totals.baseTotal);
 
   return {
