@@ -71,6 +71,13 @@
       "when": 1787943600326,
       "tag": "0009_cute_phalanx",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "5",
+      "when": 1788030408151,
+      "tag": "0010_perpetual_stardust",
+      "breakpoints": true
     }
   ]
 }
