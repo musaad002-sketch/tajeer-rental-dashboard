@@ -15,10 +15,11 @@ export function formatMoney(value: number) {
 export function calculateContractAmounts(startDate: string, returnDate: string, unitRate: string | number, paidAmount: string | number = 0, type: "daily" | "monthly" = "daily") {
   const days = rentalDays(startDate, returnDate);
   const units = type === "monthly" ? (days > 0 ? Math.max(1, Math.ceil(days / 30)) : 0) : days;
+  const billableDays = type === "monthly" ? units * 30 : days;
   const rate = Number(unitRate) || 0;
   const total = units > 0 && rate > 0 ? units * rate : 0;
   const paid = Number(paidAmount) || 0;
-  return { days, units, rate, total: total > 0 ? formatMoney(total) : "", paid: formatMoney(paid), remaining: formatMoney(Math.max(0, total - paid)) };
+  return { days: billableDays, units, rate, total: total > 0 ? formatMoney(total) : "", paid: formatMoney(paid), remaining: formatMoney(Math.max(0, total - paid)) };
 }
 
 function dateAtMidnight(value: string | Date) {

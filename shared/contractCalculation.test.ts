@@ -9,7 +9,7 @@ describe("contract calculation", () => {
   });
 
   it("uses monthly units for monthly contracts", () => {
-    expect(calculateContractAmounts("2026-08-28", "2026-10-01", "3000", "0", "monthly")).toEqual({ days: 34, units: 2, rate: 3000, total: "6000.00", paid: "0.00", remaining: "6000.00" });
+    expect(calculateContractAmounts("2026-08-28", "2026-10-01", "3000", "0", "monthly")).toEqual({ days: 60, units: 2, rate: 3000, total: "6000.00", paid: "0.00", remaining: "6000.00" });
   });
 
   it("calculates monthly return dates and clamps short months", () => {
