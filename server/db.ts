@@ -320,6 +320,24 @@ export async function listContractOperations(contractId: number) {
   return db.select().from(contractOperations).where(eq(contractOperations.contractId, contractId)).orderBy(desc(contractOperations.createdAt));
 }
 
+export async function listAllContractOperations(filters: { from?: string; to?: string } = {}) {
+  const db = await getDb(); if (!db) return [];
+  const conditions = [];
+  if (filters.from) conditions.push(sql`${contractOperations.createdAt} >= ${new Date(`${filters.from}T00:00:00.000`)}`);
+  if (filters.to) {
+    const nextDay = new Date(`${filters.to}T00:00:00.000`);
+    nextDay.setDate(nextDay.getDate() + 1);
+    conditions.push(sql`${contractOperations.createdAt} < ${nextDay}`);
+  }
+  return db.select({ operation: contractOperations, contract: contracts, customer: customers, vehicle: vehicles })
+    .from(contractOperations)
+    .leftJoin(contracts, eq(contractOperations.contractId, contracts.id))
+    .leftJoin(customers, eq(contracts.customerId, customers.id))
+    .leftJoin(vehicles, eq(contractOperations.vehicleId, vehicles.id))
+    .where(conditions.length ? and(...conditions) : undefined)
+    .orderBy(desc(contractOperations.createdAt));
+}
+
 export async function listPayments() {
   const db = await getDb(); if (!db) return [];
   return db.select({ payment: payments, contract: contracts, customer: customers }).from(payments).leftJoin(contracts, eq(payments.contractId, contracts.id)).leftJoin(customers, eq(payments.customerId, customers.id)).orderBy(desc(payments.createdAt));
