@@ -18,9 +18,10 @@ export const users = mysqlTable("users", {
 
 export const vehicleStatus = mysqlEnum("vehicleStatus", ["available", "reserved", "rented", "maintenance", "unavailable"]);
 export const contractType = mysqlEnum("contractType", ["daily", "monthly"]);
+export const contractScope = mysqlEnum("contractScope", ["domestic_limited", "domestic_open", "international"]);
 export const contractStatus = mysqlEnum("contractStatus", ["active", "overdue", "suspended", "closed", "returned"]);
 export const operationType = mysqlEnum("operationType", ["new_contract", "extension", "payment", "additional_fee", "rate_update", "vehicle_swap", "suspend", "close", "return"]);
-export const paymentMethod = mysqlEnum("paymentMethod", ["cash", "network", "transfer"]);
+export const paymentMethod = mysqlEnum("paymentMethod", ["cash", "network", "transfer", "mixed"]);
 export const maintenanceStatus = mysqlEnum("maintenanceStatus", ["pending", "in_progress", "completed", "written_off"]);
 export const maintenanceType = mysqlEnum("maintenanceType", ["maintenance", "oil_change"]);
 export const liabilityStatus = mysqlEnum("liabilityStatus", ["open", "partially_paid", "paid", "cancelled"]);
@@ -63,6 +64,7 @@ export const contracts = mysqlTable("contracts", {
   customerId: int("customerId").notNull(),
   vehicleId: int("vehicleId").notNull(),
   type: contractType.notNull(),
+  contractScope: contractScope.default("domestic_open"),
   status: contractStatus.default("active").notNull(),
   startDate: date("startDate").notNull(),
   expectedReturnDate: date("expectedReturnDate").notNull(),

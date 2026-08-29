@@ -15,6 +15,7 @@ import { calculateReturnSettlement } from "../shared/returnSettlement";
 import { belongsToGeneralOutstanding } from "../shared/outstandingStatus";
 import { calculateCloseSettlement } from "../shared/closeSettlement";
 import { calculateSuspensionSettlement, statusAfterSuspendedSettlement } from "../shared/suspensionSettlement";
+import { canChargeMonthlyAuthorizationFee } from "../shared/contractScope";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -305,8 +306,12 @@ export async function recordContractOperation(input: { contractId?: number; cont
     }
   }
   if (input.operation === "additional_fee") {
+    if (contract.contractScope !== "international") throw new Error("رسوم التفويض الدولي متاحة للعقد الخارجي الدولي فقط");
     const fee = Number(input.amount);
-    operationDetails = `رسوم إضافية: ${fee.toFixed(2)}${input.details ? `؛ ${input.details}` : ""}`;
+    const previousFees = await db.select({ createdAt: contractOperations.createdAt }).from(contractOperations).where(and(eq(contractOperations.contractId, contractId), eq(contractOperations.operation, "additional_fee")));
+    const alreadyChargedThisMonth = previousFees.some((row) => { const date = new Date(row.createdAt); return date.getFullYear() === operationAt.getFullYear() && date.getMonth() === operationAt.getMonth(); });
+    if (!canChargeMonthlyAuthorizationFee(contract.contractScope, contract.type, alreadyChargedThisMonth)) throw new Error("تم تسجيل رسم التفويض الدولي لهذا العقد خلال هذا الشهر أو أن نوع العقد لا يسمح به");
+    operationDetails = `رسوم تفويض دولي: ${fee.toFixed(2)}${input.details ? `؛ ${input.details}` : ""}`;
     await db.update(contracts).set({ totalAmount: addAdditionalFee(contract.totalAmount, fee) }).where(eq(contracts.id, contractId));
   }
   if (input.operation === "rate_update") {
@@ -317,6 +322,7 @@ export async function recordContractOperation(input: { contractId?: number; cont
     await db.update(contracts).set({ rentalAmount: nextRate.toFixed(2), totalAmount: nextTotal }).where(eq(contracts.id, contractId));
   }
   if (input.operation === "vehicle_swap") {
+    if (contract.contractScope === "international" && (!input.amount || !Number.isFinite(Number(input.amount)) || Number(input.amount) <= 0)) throw new Error("أدخل قيمة رسم التفويض الدولي الجديد عند تبديل سيارة العقد الدولي");
     let replacementIsAvailable = false;
     if (input.vehicleId) {
       const replacement = await db.select().from(vehicles).where(and(eq(vehicles.id, input.vehicleId), eq(vehicles.status, "available"))).limit(1);
@@ -327,7 +333,7 @@ export async function recordContractOperation(input: { contractId?: number; cont
     previousVehicleId = contract.vehicleId;
     const totals = calculateContractTotals({ baseTotal: contract.totalAmount, expectedReturnDate: contract.expectedReturnDate, rentalAmount: contract.rentalAmount, type: contract.type, actualReturnDate: contract.actualReturnDate });
     const balances = calculateContractBalances({ baseTotal: totals.baseTotal, delayTotal: totals.delayTotal, paidAmount: contract.paidAmount });
-    operationDetails = `تبديل السيارة: ${contract.vehicleId} ← ${input.vehicleId}؛ نقل الحسابات: المدفوع ${Number(contract.paidAmount).toFixed(2)} ر.س، السابق ${balances.previousOutstanding} ر.س، التأخير ${balances.currentOutstanding} ر.س، الإجمالي ${balances.grandOutstanding} ر.س${input.details ? `؛ ${input.details}` : ""}`;
+    operationDetails = `تبديل السيارة: ${contract.vehicleId} ← ${input.vehicleId}؛ نقل الحسابات: المدفوع ${Number(contract.paidAmount).toFixed(2)} ر.س، السابق ${balances.previousOutstanding} ر.س، التأخير ${balances.currentOutstanding} ر.س، الإجمالي ${balances.grandOutstanding} ر.س${contract.contractScope === "international" ? `؛ رسم تفويض دولي جديد ${Number(input.amount).toFixed(2)} ر.س` : ""}${input.details ? `؛ ${input.details}` : ""}`;
   }
   let returnSettlement: ReturnType<typeof calculateReturnSettlement> | undefined;
   let closeSettlement: ReturnType<typeof calculateCloseSettlement> | undefined;
@@ -343,6 +349,11 @@ export async function recordContractOperation(input: { contractId?: number; cont
   const operationToPersist = input.operation === "close" && closeSettlement?.shouldRecordReturn ? "return" : input.operation;
   const operationVehicleId = input.operation === "close" || input.operation === "return" ? contract.vehicleId : input.vehicleId;
   await db.insert(contractOperations).values({ contractId, operation: operationToPersist, vehicleId: operationVehicleId, previousVehicleId, amount: input.operation === "close" && closeSettlement?.shouldRecordReturn ? closeSettlement.customerCredit : input.amount ?? "0", paymentMethod: input.paymentMethod === "mixed" ? undefined : input.paymentMethod, details: operationDetails, createdBy: input.createdBy });
+  if (input.operation === "vehicle_swap" && contract.contractScope === "international") {
+    const fee = Number(input.amount);
+    await db.insert(contractOperations).values({ contractId, operation: "additional_fee", vehicleId: input.vehicleId, amount: fee.toFixed(2), details: `رسم تفويض دولي جديد بسبب تبديل السيارة؛ ${input.details ?? ""}`.trim(), createdBy: input.createdBy });
+    await db.update(contracts).set({ totalAmount: (Number(contract.totalAmount) + fee).toFixed(2) }).where(eq(contracts.id, contractId));
+  }
   if (effects.shouldCreatePayment && input.amount) {
     const paid = Number(contract.paidAmount) + Number(input.amount);
     await db.update(contracts).set({ paidAmount: paid.toFixed(2), ...(statusAfterPayment ? { status: statusAfterPayment } : {}) }).where(eq(contracts.id, contractId));
@@ -357,6 +368,7 @@ export async function recordContractOperation(input: { contractId?: number; cont
     await db.update(contracts).set({ expectedReturnDate: nextReturn }).where(eq(contracts.id, contractId));
   }
   if (input.operation === "vehicle_swap") {
+    if (contract.contractScope === "international" && (!input.amount || !Number.isFinite(Number(input.amount)) || Number(input.amount) <= 0)) throw new Error("أدخل قيمة رسم التفويض الدولي الجديد عند تبديل سيارة العقد الدولي");
     let replacementIsAvailable = false;
     if (input.vehicleId) {
       const replacement = await db.select().from(vehicles).where(and(eq(vehicles.id, input.vehicleId), eq(vehicles.status, "available"))).limit(1);
@@ -462,7 +474,7 @@ export async function nextContractNumber() {
   return computeNextContractNumber(rows.map((row) => row.contractNumber));
 }
 
-export async function createContract(input: { contractNumber?: string; customerId: number; vehicleId: number; vehicleMileage?: number; type: "daily" | "monthly"; startDate: string; expectedReturnDate: string; rentalAmount: string; days: number; totalAmount: string; paidAmount?: string; notes?: string; createdBy?: number }) {
+export async function createContract(input: { contractNumber?: string; customerId: number; vehicleId: number; vehicleMileage?: number; type: "daily" | "monthly"; contractScope?: "domestic_limited" | "domestic_open" | "international"; startDate: string; expectedReturnDate: string; rentalAmount: string; days: number; totalAmount: string; paidAmount?: string; notes?: string; createdBy?: number }) {
   const db = await getDb(); if (!db) throw new Error("Database unavailable");
   const available = await listAvailableVehicles();
   const selectedVehicle = available.find((vehicle) => vehicle.id === input.vehicleId);
@@ -609,6 +621,7 @@ export async function updateContractRetroactively(input: {
   customerId?: number;
   vehicleId?: number;
   type?: "daily" | "monthly";
+  contractScope?: "domestic_limited" | "domestic_open" | "international";
   status?: "active" | "overdue" | "suspended" | "closed" | "returned";
   startDate?: string;
   expectedReturnDate?: string;
@@ -630,6 +643,7 @@ export async function updateContractRetroactively(input: {
   if (input.customerId !== undefined) values.customerId = input.customerId;
   if (input.vehicleId !== undefined) values.vehicleId = input.vehicleId;
   if (input.type !== undefined) values.type = input.type;
+  if (input.contractScope !== undefined) values.contractScope = input.contractScope;
   if (input.status !== undefined) values.status = input.status;
   if (input.startDate !== undefined) values.startDate = new Date(input.startDate);
   if (input.expectedReturnDate !== undefined) values.expectedReturnDate = new Date(input.expectedReturnDate);
@@ -648,7 +662,7 @@ export async function updateContractRetroactively(input: {
 export async function updatePaymentRetroactively(input: {
   id: number;
   amount?: string;
-  method?: "cash" | "network" | "transfer";
+  method?: "cash" | "network" | "transfer" | "mixed";
   notes?: string | null;
   reason: string;
   createdBy?: number;

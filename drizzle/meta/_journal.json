@@ -99,6 +99,13 @@
       "when": 1788044128315,
       "tag": "0013_even_king_bedlam",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "5",
+      "when": 1788044373686,
+      "tag": "0014_rich_madrox",
+      "breakpoints": true
     }
   ]
 }

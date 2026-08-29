@@ -110,3 +110,10 @@ it("passes mixed cash and network payment amounts as one operation", async () =>
   await caller.operations.record({ contractNumber: "1011", operation: "payment", amount: "300", paymentMethod: "mixed", paymentCashAmount: "150", paymentNetworkAmount: "150", details: "دفعة مختلطة" });
   expect(recordMock).toHaveBeenCalledWith({ contractNumber: "1011", operation: "payment", amount: "300", paymentMethod: "mixed", paymentCashAmount: "150", paymentNetworkAmount: "150", details: "دفعة مختلطة", createdBy: 7 });
 });
+
+it("passes contract scope when creating a contract", async () => {
+  createMock.mockClear();
+  const caller = appRouter.createCaller(context);
+  await caller.contracts.create({ customerId: 1, vehicleId: 1, type: "monthly", contractScope: "international", startDate: "2026-08-29", expectedReturnDate: "2026-09-28", rentalAmount: "3000", days: 30, totalAmount: "3000" });
+  expect(createMock).toHaveBeenCalledWith(expect.objectContaining({ contractScope: "international", createdBy: 7 }));
+});
