@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { and, desc, eq, inArray, like, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { InsertUser, contractOperations, contracts, customers, deletionAudits, maintenanceRecords, officeLiabilities, payments, users, vehicles } from "../drizzle/schema";
@@ -41,6 +42,41 @@ export async function upsertUser(user: InsertUser): Promise<void> {
 export async function getUserByOpenId(openId: string) {
   const db = await getDb(); if (!db) return undefined;
   const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
+  return result[0];
+}
+
+export function hashLocalPassword(password: string) { return createHash("sha256").update(password).digest("hex"); }
+
+export async function listManagedUsers() {
+  const db = await getDb(); if (!db) return [];
+  return db.select({ id: users.id, openId: users.openId, name: users.name, email: users.email, username: users.username, role: users.role, isActive: users.isActive, permissions: users.permissions, createdAt: users.createdAt, lastSignedIn: users.lastSignedIn }).from(users).orderBy(desc(users.createdAt));
+}
+
+export async function getUserByUsername(username: string) {
+  const db = await getDb(); if (!db) return undefined;
+  const result = await db.select().from(users).where(eq(users.username, username)).limit(1);
+  return result[0];
+}
+
+export async function createManagedUser(input: { username: string; password: string; name: string; email?: string; role: "user" | "admin"; permissions: string[] }) {
+  const db = await getDb(); if (!db) throw new Error("قاعدة البيانات غير متاحة");
+  const existing = await getUserByUsername(input.username);
+  if (existing) throw new Error("اسم المستخدم مستخدم مسبقاً");
+  await db.insert(users).values({ openId: `local_user_${input.username}_${Date.now()}`, username: input.username, passwordHash: hashLocalPassword(input.password), name: input.name, email: input.email || null, loginMethod: "local", role: input.role, isActive: true, permissions: JSON.stringify(input.permissions), lastSignedIn: new Date() });
+  return getUserByUsername(input.username);
+}
+
+export async function updateManagedUser(input: { id: number; name?: string; email?: string; password?: string; role?: "user" | "admin"; isActive?: boolean; permissions?: string[] }) {
+  const db = await getDb(); if (!db) throw new Error("قاعدة البيانات غير متاحة");
+  const values: Record<string, unknown> = {};
+  if (input.name !== undefined) values.name = input.name;
+  if (input.email !== undefined) values.email = input.email || null;
+  if (input.password) values.passwordHash = hashLocalPassword(input.password);
+  if (input.role !== undefined) values.role = input.role;
+  if (input.isActive !== undefined) values.isActive = input.isActive;
+  if (input.permissions !== undefined) values.permissions = JSON.stringify(input.permissions);
+  if (Object.keys(values).length) await db.update(users).set(values).where(eq(users.id, input.id));
+  const result = await db.select({ id: users.id, openId: users.openId, name: users.name, email: users.email, username: users.username, role: users.role, isActive: users.isActive, permissions: users.permissions, createdAt: users.createdAt, lastSignedIn: users.lastSignedIn }).from(users).where(eq(users.id, input.id)).limit(1);
   return result[0];
 }
 

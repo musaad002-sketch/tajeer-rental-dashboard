@@ -78,6 +78,13 @@
       "when": 1788030408151,
       "tag": "0010_perpetual_stardust",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "5",
+      "when": 1788038237345,
+      "tag": "0011_chief_fat_cobra",
+      "breakpoints": true
     }
   ]
 }

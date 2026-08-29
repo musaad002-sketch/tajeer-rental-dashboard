@@ -5,7 +5,8 @@ import { sdk } from "./_core/sdk";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { isValidVehicleModelYear } from "../shared/vehicleRules";
-import { createCustomer, createMaintenance, createOfficeLiability, createContract, deleteContractSafely, deleteOperationSafely, deletePaymentSafely, deleteVehicle, getAccountingSummary, listPayments, listReturns, getDashboardAlerts, getDashboardSummary, getFleetReport, getOfficeLiabilitySummary, getContractDetails, getCustomerDetails, getVehicleDetails, getVehicleRevenueReport, listAvailableVehicles, listContracts, listContractOperations, listAllContractOperations, listCustomers, listMaintenance, listOfficeLiabilities, listVehicles, recordContractOperation, recordOfficeLiabilityPayment, searchCustomerLedger, updateMaintenanceStatus, createVehicle, updateVehicle, updateContractRetroactively, updatePaymentRetroactively, upsertUser } from "./db";
+import { permissionKeys } from "../shared/permissions";
+import { createCustomer, createMaintenance, createOfficeLiability, createContract, deleteContractSafely, deleteOperationSafely, deletePaymentSafely, deleteVehicle, getAccountingSummary, listPayments, listReturns, getDashboardAlerts, getDashboardSummary, getFleetReport, getOfficeLiabilitySummary, getContractDetails, getCustomerDetails, getVehicleDetails, getVehicleRevenueReport, listAvailableVehicles, listContracts, listContractOperations, listAllContractOperations, listCustomers, listMaintenance, listOfficeLiabilities, listVehicles, recordContractOperation, recordOfficeLiabilityPayment, searchCustomerLedger, updateMaintenanceStatus, createVehicle, updateVehicle, updateContractRetroactively, updatePaymentRetroactively, upsertUser, getUserByUsername, listManagedUsers, createManagedUser, updateManagedUser, hashLocalPassword } from "./db";
 
 export const appRouter = router({
   system: systemRouter,
@@ -14,18 +15,24 @@ export const appRouter = router({
     logout: publicProcedure.mutation(({ ctx }) => { const cookieOptions = getSessionCookieOptions(ctx.req); ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 }); return { success: true } as const; }),
     localLogin: publicProcedure.input(z.object({ username: z.string().min(1), password: z.string().min(1) })).mutation(async ({ input, ctx }) => {
       if (process.env.LOCAL_AUTH_ENABLED !== "true") throw new Error("Local login is disabled");
+      const managedUser = await getUserByUsername(input.username);
       const expectedUsername = process.env.LOCAL_ADMIN_USERNAME || "admin";
       const expectedPassword = process.env.LOCAL_ADMIN_PASSWORD;
-      if (!expectedPassword || input.username !== expectedUsername || input.password !== expectedPassword) {
-        throw new Error("اسم المستخدم أو كلمة المرور غير صحيحة");
-      }
-      const openId = `local_${expectedUsername}`;
-      await upsertUser({ openId, name: "مدير النظام", email: null, loginMethod: "local", role: "admin", lastSignedIn: new Date() });
-      const sessionToken = await sdk.createSessionToken(openId, { name: "مدير النظام", expiresInMs: ONE_YEAR_MS });
+      const validManaged = managedUser?.isActive && managedUser.passwordHash === hashLocalPassword(input.password);
+      const validOwner = !managedUser && Boolean(expectedPassword) && input.username === expectedUsername && input.password === expectedPassword;
+      if (!validManaged && !validOwner) throw new Error("اسم المستخدم أو كلمة المرور غير صحيحة");
+      const openId = managedUser?.openId ?? `local_${expectedUsername}`;
+      if (!managedUser) await upsertUser({ openId, name: "مدير النظام", email: null, loginMethod: "local", role: "admin", lastSignedIn: new Date() });
+      const sessionToken = await sdk.createSessionToken(openId, { name: managedUser?.name ?? "مدير النظام", expiresInMs: ONE_YEAR_MS });
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
       return { success: true } as const;
     }),
+  }),
+  users: router({
+    list: adminProcedure.query(() => listManagedUsers()),
+    create: adminProcedure.input(z.object({ username: z.string().trim().min(3).max(64), password: z.string().min(6), name: z.string().trim().min(2), email: z.string().email().optional(), role: z.enum(["user", "admin"]), permissions: z.array(z.enum(permissionKeys)).default([]) })).mutation(({ input }) => createManagedUser(input)),
+    update: adminProcedure.input(z.object({ id: z.number().int().positive(), name: z.string().trim().min(2).optional(), email: z.string().email().optional(), password: z.string().min(6).optional(), role: z.enum(["user", "admin"]).optional(), isActive: z.boolean().optional(), permissions: z.array(z.enum(permissionKeys)).optional() })).mutation(({ input }) => updateManagedUser(input)),
   }),
   dashboard: protectedProcedure.query(() => getDashboardSummary()),
   alerts: protectedProcedure.query(() => getDashboardAlerts()),
