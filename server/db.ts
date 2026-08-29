@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray, like, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, contractOperations, contracts, customers, maintenanceRecords, officeLiabilities, payments, users, vehicles } from "../drizzle/schema";
+import { InsertUser, contractOperations, contracts, customers, deletionAudits, maintenanceRecords, officeLiabilities, payments, users, vehicles } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { buildOperationEffects, getContractReference, validateVehicleSwap } from "../shared/contractOperations";
 import { nextContractNumber as computeNextContractNumber } from "../shared/contractNumbers";
@@ -13,6 +13,7 @@ import { allocatePayment } from "../shared/paymentAllocation";
 import { calculateReturnSettlement } from "../shared/returnSettlement";
 import { belongsToGeneralOutstanding } from "../shared/outstandingStatus";
 import { calculateCloseSettlement } from "../shared/closeSettlement";
+import { statusAfterSuspendedSettlement } from "../shared/suspensionSettlement";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -213,12 +214,15 @@ export async function recordContractOperation(input: { contractId?: number; cont
   let previousVehicleId: number | undefined;
   let operationDetails = input.details;
   const operationAt = new Date();
+  let statusAfterPayment: "active" | "overdue" | null = null;
   if (input.operation === "payment" && input.amount) {
     const totals = calculateContractTotals({ baseTotal: contract.totalAmount, expectedReturnDate: contract.expectedReturnDate, rentalAmount: contract.rentalAmount, type: contract.type, actualReturnDate: contract.actualReturnDate });
     const balances = calculateContractBalances({ baseTotal: totals.baseTotal, delayTotal: totals.delayTotal, paidAmount: contract.paidAmount });
     const allocation = allocatePayment({ paymentAmount: Number(input.amount), previousOutstanding: Number(balances.previousOutstanding), currentOutstanding: Number(balances.currentOutstanding) });
     const allocationNote = `تخصيص الدفعة: السابق ${allocation.appliedToPrevious.toFixed(2)} ر.س؛ الحالي ${allocation.appliedToCurrent.toFixed(2)} ر.س${allocation.unapplied > 0 ? `؛ رصيد زائد ${allocation.unapplied.toFixed(2)} ر.س` : ""}`;
     operationDetails = [operationDetails, allocationNote].filter(Boolean).join("؛ ");
+    statusAfterPayment = statusAfterSuspendedSettlement({ status: contract.status, outstanding: Math.max(0, Number(balances.grandOutstanding) - Number(input.amount)), expectedReturnDate: contract.expectedReturnDate, now: operationAt });
+    if (statusAfterPayment) operationDetails = `${operationDetails}؛ تمت تسوية الرصيد وإعادة العقد إلى حالة ${statusAfterPayment === "active" ? "ساري" : "متأخر"}`;
   }
   if (input.vehicleMileage !== undefined) {
     if (!Number.isInteger(input.vehicleMileage) || input.vehicleMileage < 0) throw new Error("قراءة العداد يجب أن تكون رقماً صحيحاً غير سالب");
@@ -269,7 +273,7 @@ export async function recordContractOperation(input: { contractId?: number; cont
   await db.insert(contractOperations).values({ contractId, operation: input.operation, vehicleId: input.vehicleId, previousVehicleId, amount: input.amount ?? "0", paymentMethod: input.paymentMethod, details: operationDetails, createdBy: input.createdBy });
   if (effects.shouldCreatePayment && input.amount) {
     const paid = Number(contract.paidAmount) + Number(input.amount);
-    await db.update(contracts).set({ paidAmount: paid.toFixed(2) }).where(eq(contracts.id, contractId));
+    await db.update(contracts).set({ paidAmount: paid.toFixed(2), ...(statusAfterPayment ? { status: statusAfterPayment } : {}) }).where(eq(contracts.id, contractId));
     await db.insert(payments).values({ contractId, customerId: contract.customerId, amount: input.amount, method: input.paymentMethod ?? "cash", notes: input.details });
   }
   if (input.operation === "extension") {
@@ -572,4 +576,52 @@ export async function updatePaymentRetroactively(input: {
   const changed = Object.keys(values).map((key) => `${key}: ${String((payment as Record<string, unknown>)[key])} ← ${String(values[key])}`).join("؛ ");
   await db.insert(contractOperations).values({ contractId: payment.contractId, operation: "payment", amount: String(values.amount ?? payment.amount), paymentMethod: (values.method ?? payment.method) as "cash" | "network" | "transfer", details: `تعديل دفعة بأثر رجعي #${payment.id}؛ ${changed}؛ السبب: ${input.reason.trim()}`, createdBy: input.createdBy });
   return { success: true as const, contractId: payment.contractId, paidAmount: paidAmount.toFixed(2) };
+}
+
+export async function deletePaymentSafely(input: { id: number; reason: string; deletedBy?: number }) {
+  const db = await getDb(); if (!db) throw new Error("Database unavailable");
+  if (!input.reason.trim()) throw new Error("سبب حذف الدفعة مطلوب");
+  const rows = await db.select().from(payments).where(eq(payments.id, input.id)).limit(1);
+  const payment = rows[0];
+  if (!payment) throw new Error("الدفعة غير موجودة أو حذفت مسبقاً");
+  await db.insert(deletionAudits).values({ entityType: "payment", entityId: payment.id, contractId: payment.contractId, snapshot: JSON.stringify(payment), reason: input.reason.trim(), deletedBy: input.deletedBy });
+  await db.delete(payments).where(eq(payments.id, payment.id));
+  const remainingPayments = await db.select({ amount: payments.amount }).from(payments).where(eq(payments.contractId, payment.contractId));
+  const paidAmount = remainingPayments.reduce((sum, row) => sum + Number(row.amount), 0).toFixed(2);
+  await db.update(contracts).set({ paidAmount }).where(eq(contracts.id, payment.contractId));
+  await db.insert(contractOperations).values({ contractId: payment.contractId, operation: "payment", amount: "0", details: `حذف دفعة آمن #${payment.id} بقيمة ${payment.amount} ر.س؛ السبب: ${input.reason.trim()}`, createdBy: input.deletedBy });
+  return { success: true as const, contractId: payment.contractId, paidAmount };
+}
+
+export async function deleteOperationSafely(input: { id: number; reason: string; deletedBy?: number }) {
+  const db = await getDb(); if (!db) throw new Error("Database unavailable");
+  if (!input.reason.trim()) throw new Error("سبب حذف العملية مطلوب");
+  const rows = await db.select().from(contractOperations).where(eq(contractOperations.id, input.id)).limit(1);
+  const operation = rows[0];
+  if (!operation) throw new Error("العملية غير موجودة أو حذفت مسبقاً");
+  await db.insert(deletionAudits).values({ entityType: "operation", entityId: operation.id, contractId: operation.contractId, snapshot: JSON.stringify(operation), reason: input.reason.trim(), deletedBy: input.deletedBy });
+  await db.delete(contractOperations).where(eq(contractOperations.id, operation.id));
+  return { success: true as const, contractId: operation.contractId };
+}
+
+export async function deleteContractSafely(input: { id: number; reason: string; deletedBy?: number }) {
+  const db = await getDb(); if (!db) throw new Error("Database unavailable");
+  if (!input.reason.trim()) throw new Error("سبب حذف العقد مطلوب");
+  const rows = await db.select().from(contracts).where(eq(contracts.id, input.id)).limit(1);
+  const contract = rows[0];
+  if (!contract) throw new Error("العقد غير موجود أو حذف مسبقاً");
+  const [paymentRows, operationRows] = await Promise.all([
+    db.select().from(payments).where(eq(payments.contractId, contract.id)),
+    db.select().from(contractOperations).where(eq(contractOperations.contractId, contract.id)),
+  ]);
+  await db.insert(deletionAudits).values([
+    { entityType: "contract", entityId: contract.id, contractId: contract.id, snapshot: JSON.stringify(contract), reason: input.reason.trim(), deletedBy: input.deletedBy },
+    ...paymentRows.map((payment) => ({ entityType: "payment", entityId: payment.id, contractId: contract.id, snapshot: JSON.stringify(payment), reason: `حذف مع العقد #${contract.contractNumber}: ${input.reason.trim()}`, deletedBy: input.deletedBy })),
+    ...operationRows.map((operation) => ({ entityType: "operation", entityId: operation.id, contractId: contract.id, snapshot: JSON.stringify(operation), reason: `حذف مع العقد #${contract.contractNumber}: ${input.reason.trim()}`, deletedBy: input.deletedBy })),
+  ]);
+  await db.delete(payments).where(eq(payments.contractId, contract.id));
+  await db.delete(contractOperations).where(eq(contractOperations.contractId, contract.id));
+  await db.delete(contracts).where(eq(contracts.id, contract.id));
+  await db.update(vehicles).set({ status: "available" }).where(eq(vehicles.id, contract.vehicleId));
+  return { success: true as const, vehicleId: contract.vehicleId };
 }
