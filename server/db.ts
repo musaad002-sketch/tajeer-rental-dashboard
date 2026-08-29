@@ -521,14 +521,14 @@ export async function deleteOfficeLiabilitySafely(input: { id: number; reason: s
   await db.insert(deletionAudits).values({ entityType: "liability", entityId: input.id, snapshot: JSON.stringify(item), reason: input.reason.trim(), deletedBy: input.deletedBy }); await db.delete(officeLiabilities).where(eq(officeLiabilities.id, input.id)); return { success: true as const };
 }
 
-export async function recordOfficeLiabilityPayment(id: number, amount: string) {
+export async function recordOfficeLiabilityPayment(id: number, amount: string, paymentMethod: "cash" | "network" | "transfer") {
   const db = await getDb(); if (!db) throw new Error("Database unavailable");
   const rows = await db.select().from(officeLiabilities).where(eq(officeLiabilities.id, id)).limit(1);
   const liability = rows[0];
   if (!liability) throw new Error("الالتزام غير موجود");
   const nextPaid = Math.min(Number(liability.amount), Number(liability.paidAmount) + Number(amount));
   const status = nextPaid >= Number(liability.amount) ? "paid" : nextPaid > 0 ? "partially_paid" : "open";
-  await db.update(officeLiabilities).set({ paidAmount: nextPaid.toFixed(2), status }).where(eq(officeLiabilities.id, id));
+  await db.update(officeLiabilities).set({ paidAmount: nextPaid.toFixed(2), status, paymentMethod }).where(eq(officeLiabilities.id, id));
 }
 
 export async function getOfficeLiabilitySummary() {

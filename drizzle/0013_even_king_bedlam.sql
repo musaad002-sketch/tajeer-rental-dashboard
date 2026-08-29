@@ -1,0 +1,1 @@
+ALTER TABLE `officeLiabilities` ADD `paymentMethod` enum('cash','network','transfer') NULL;

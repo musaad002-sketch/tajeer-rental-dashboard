@@ -135,6 +135,7 @@ export const officeLiabilities = mysqlTable("officeLiabilities", {
   notes: text("notes"),
   expenseReason: varchar("expenseReason", { length: 240 }),
   contractNumber: varchar("contractNumber", { length: 32 }),
+  paymentMethod: paymentMethod,
   createdBy: int("createdBy"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
