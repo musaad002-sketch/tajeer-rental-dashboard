@@ -262,7 +262,7 @@ export async function listCustomers() {
   return db.select().from(customers).orderBy(desc(customers.createdAt));
 }
 
-export async function recordContractOperation(input: { contractId?: number; contractNumber?: string; operation: "new_contract" | "extension" | "payment" | "additional_fee" | "rate_update" | "vehicle_swap" | "suspend" | "close" | "return"; vehicleId?: number; vehicleMileage?: number; amount?: string; paymentMethod?: "cash" | "network" | "transfer"; extensionDays?: number; details?: string; createdBy?: number }) {
+export async function recordContractOperation(input: { contractId?: number; contractNumber?: string; operation: "new_contract" | "extension" | "payment" | "additional_fee" | "rate_update" | "vehicle_swap" | "suspend" | "close" | "return"; vehicleId?: number; vehicleMileage?: number; amount?: string; paymentMethod?: "cash" | "network" | "transfer" | "mixed"; paymentCashAmount?: string; paymentNetworkAmount?: string; extensionDays?: number; details?: string; createdBy?: number }) {
   const db = await getDb(); if (!db) throw new Error("Database unavailable");
   const reference = getContractReference(input);
   const lookup = reference?.kind === "contractNumber" ? eq(contracts.contractNumber, reference.value) : reference?.kind === "contractId" ? eq(contracts.id, reference.value) : undefined;
@@ -285,11 +285,12 @@ export async function recordContractOperation(input: { contractId?: number; cont
     operationDetails = `تسوية التعليق حتى ${operationAt.toLocaleDateString("en-CA")}: خصم الأيام غير المستخدمة ${suspensionSettlement.remainingDays} يوم بقيمة ${suspensionSettlement.unusedValue} ر.س؛ المستحق حتى التعليق ${suspensionSettlement.amountDueThroughSuspension} ر.س؛ المتبقي السابق ${suspensionSettlement.balances.previousOutstanding} ر.س؛ المتبقي الحالي ${suspensionSettlement.balances.currentOutstanding} ر.س${input.details ? `؛ ${input.details}` : ""}`;
   }
   if (input.operation === "payment" && input.amount) {
+    if (input.paymentMethod === "mixed" && (!Number(input.paymentCashAmount) || !Number(input.paymentNetworkAmount) || Number(input.paymentCashAmount) < 0 || Number(input.paymentNetworkAmount) < 0 || Number(input.paymentCashAmount) + Number(input.paymentNetworkAmount) !== Number(input.amount))) throw new Error("يجب أن يساوي مجموع الكاش والشبكة مبلغ الدفعة");
     const totals = calculateContractTotals({ baseTotal: contract.totalAmount, expectedReturnDate: contract.expectedReturnDate, rentalAmount: contract.rentalAmount, type: contract.type, actualReturnDate: contract.actualReturnDate });
     const balances = calculateContractBalances({ baseTotal: totals.baseTotal, delayTotal: totals.delayTotal, paidAmount: contract.paidAmount });
     const allocation = allocatePayment({ paymentAmount: Number(input.amount), previousOutstanding: Number(balances.previousOutstanding), currentOutstanding: Number(balances.currentOutstanding) });
     const allocationNote = `تخصيص الدفعة: السابق ${allocation.appliedToPrevious.toFixed(2)} ر.س؛ الحالي ${allocation.appliedToCurrent.toFixed(2)} ر.س${allocation.unapplied > 0 ? `؛ رصيد زائد ${allocation.unapplied.toFixed(2)} ر.س` : ""}`;
-    operationDetails = [operationDetails, allocationNote].filter(Boolean).join("؛ ");
+    operationDetails = [operationDetails, allocationNote, input.paymentMethod === "mixed" ? `دفع مختلط: كاش ${Number(input.paymentCashAmount).toFixed(2)} ر.س؛ شبكة ${Number(input.paymentNetworkAmount).toFixed(2)} ر.س` : undefined].filter(Boolean).join("؛ ");
     statusAfterPayment = statusAfterSuspendedSettlement({ status: contract.status, outstanding: Math.max(0, Number(balances.grandOutstanding) - Number(input.amount)), expectedReturnDate: contract.expectedReturnDate, now: operationAt });
     if (statusAfterPayment) operationDetails = `${operationDetails}؛ تمت تسوية الرصيد وإعادة العقد إلى حالة ${statusAfterPayment === "active" ? "ساري" : "متأخر"}`;
   }
@@ -341,11 +342,14 @@ export async function recordContractOperation(input: { contractId?: number; cont
   }
   const operationToPersist = input.operation === "close" && closeSettlement?.shouldRecordReturn ? "return" : input.operation;
   const operationVehicleId = input.operation === "close" || input.operation === "return" ? contract.vehicleId : input.vehicleId;
-  await db.insert(contractOperations).values({ contractId, operation: operationToPersist, vehicleId: operationVehicleId, previousVehicleId, amount: input.operation === "close" && closeSettlement?.shouldRecordReturn ? closeSettlement.customerCredit : input.amount ?? "0", paymentMethod: input.paymentMethod, details: operationDetails, createdBy: input.createdBy });
+  await db.insert(contractOperations).values({ contractId, operation: operationToPersist, vehicleId: operationVehicleId, previousVehicleId, amount: input.operation === "close" && closeSettlement?.shouldRecordReturn ? closeSettlement.customerCredit : input.amount ?? "0", paymentMethod: input.paymentMethod === "mixed" ? undefined : input.paymentMethod, details: operationDetails, createdBy: input.createdBy });
   if (effects.shouldCreatePayment && input.amount) {
     const paid = Number(contract.paidAmount) + Number(input.amount);
     await db.update(contracts).set({ paidAmount: paid.toFixed(2), ...(statusAfterPayment ? { status: statusAfterPayment } : {}) }).where(eq(contracts.id, contractId));
-    await db.insert(payments).values({ contractId, customerId: contract.customerId, amount: input.amount, method: input.paymentMethod ?? "cash", notes: input.details });
+    if (input.paymentMethod === "mixed") {
+      if (Number(input.paymentCashAmount) > 0) await db.insert(payments).values({ contractId, customerId: contract.customerId, amount: Number(input.paymentCashAmount).toFixed(2), method: "cash", notes: input.details });
+      if (Number(input.paymentNetworkAmount) > 0) await db.insert(payments).values({ contractId, customerId: contract.customerId, amount: Number(input.paymentNetworkAmount).toFixed(2), method: "network", notes: input.details });
+    } else await db.insert(payments).values({ contractId, customerId: contract.customerId, amount: input.amount, method: input.paymentMethod ?? "cash", notes: input.details });
   }
   if (input.operation === "extension") {
     const nextReturn = extendReturnDate(contract.expectedReturnDate, input.extensionDays!);

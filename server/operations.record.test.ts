@@ -103,3 +103,10 @@ it("passes international authorization fee as an additional amount", async () =>
   await caller.operations.record({ contractNumber: "1011", operation: "additional_fee", amount: "50", details: "مبلغ إضافي؛ رسوم تفويض دولي" });
   expect(recordMock).toHaveBeenCalledWith({ contractNumber: "1011", operation: "additional_fee", amount: "50", details: "مبلغ إضافي؛ رسوم تفويض دولي", createdBy: 7 });
 });
+
+it("passes mixed cash and network payment amounts as one operation", async () => {
+  recordMock.mockClear();
+  const caller = appRouter.createCaller(context);
+  await caller.operations.record({ contractNumber: "1011", operation: "payment", amount: "300", paymentMethod: "mixed", paymentCashAmount: "150", paymentNetworkAmount: "150", details: "دفعة مختلطة" });
+  expect(recordMock).toHaveBeenCalledWith({ contractNumber: "1011", operation: "payment", amount: "300", paymentMethod: "mixed", paymentCashAmount: "150", paymentNetworkAmount: "150", details: "دفعة مختلطة", createdBy: 7 });
+});
