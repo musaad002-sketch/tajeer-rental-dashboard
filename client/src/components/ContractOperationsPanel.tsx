@@ -35,9 +35,9 @@ export default function ContractOperationsPanel() {
   const contracts = trpc.contracts.list.useQuery();
   const selectedContractRow = useMemo(() => contracts.data?.find((item) => item.contract.contractNumber === contractNumber.trim()), [contracts.data, contractNumber]);
   const selectedContract = selectedContractRow?.contract;
-  const remaining = selectedContract ? Math.max(0, Number(selectedContract.totalAmount) - Number(selectedContract.paidAmount)) : null;
-  const currentCharge = selectedContract ? Math.min(remaining ?? 0, Number(selectedContract.rentalAmount)) : 0;
-  const previousOutstanding = selectedContractRow ? Math.min(Number(selectedContractRow.previousOutstanding ?? 0), Math.max(0, (remaining ?? 0) - currentCharge)) : 0;
+  const remaining = selectedContractRow ? Number(selectedContractRow.grandOutstanding) : null;
+  const currentCharge = selectedContractRow ? Number(selectedContractRow.currentOutstanding) : 0;
+  const previousOutstanding = selectedContractRow ? Number(selectedContractRow.previousOutstanding) : 0;
   const allocation = operation === "payment" && amount && selectedContract ? allocatePayment({ paymentAmount: Number(amount), previousOutstanding, currentOutstanding: currentCharge }) : null;
   const record = trpc.operations.record.useMutation({ onSuccess: async () => { toast.success("تم حفظ العملية وتحديث السجل"); setAmount(""); setExtensionDays(""); setVehicleId(""); setVehicleMileage(""); setDetails(""); await Promise.all([utils.contracts.list.invalidate(), utils.vehicles.available.invalidate(), utils.operations.history.invalidate(), utils.contracts.details.invalidate()]); }, onError: (error) => toast.error(error.message) });
   const submit = () => {

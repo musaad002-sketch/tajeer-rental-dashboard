@@ -5,7 +5,7 @@ import { sdk } from "./_core/sdk";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { isValidVehicleModelYear } from "../shared/vehicleRules";
-import { createCustomer, createMaintenance, createOfficeLiability, createContract, deleteVehicle, getAccountingSummary, listPayments, listReturns, getDashboardAlerts, getDashboardSummary, getFleetReport, getOfficeLiabilitySummary, getContractDetails, getCustomerDetails, getVehicleDetails, getVehicleRevenueReport, listAvailableVehicles, listContracts, listContractOperations, listCustomers, listMaintenance, listOfficeLiabilities, listVehicles, recordContractOperation, recordOfficeLiabilityPayment, searchCustomerLedger, updateMaintenanceStatus, createVehicle, updateVehicle, upsertUser } from "./db";
+import { createCustomer, createMaintenance, createOfficeLiability, createContract, deleteVehicle, getAccountingSummary, listPayments, listReturns, getDashboardAlerts, getDashboardSummary, getFleetReport, getOfficeLiabilitySummary, getContractDetails, getCustomerDetails, getVehicleDetails, getVehicleRevenueReport, listAvailableVehicles, listContracts, listContractOperations, listCustomers, listMaintenance, listOfficeLiabilities, listVehicles, recordContractOperation, recordOfficeLiabilityPayment, searchCustomerLedger, updateMaintenanceStatus, createVehicle, updateVehicle, updateContractRetroactively, updatePaymentRetroactively, upsertUser } from "./db";
 
 export const appRouter = router({
   system: systemRouter,
@@ -42,6 +42,7 @@ export const appRouter = router({
   }),
   payments: router({
     list: protectedProcedure.query(() => listPayments()),
+    updateRetroactive: adminProcedure.input(z.object({ id: z.number().int().positive(), amount: z.string().optional(), method: z.enum(["cash", "network", "transfer"]).optional(), notes: z.string().nullable().optional(), reason: z.string().trim().min(2) })).mutation(({ input, ctx }) => updatePaymentRetroactively({ ...input, createdBy: ctx.user.id })),
   }),
   returns: router({
     list: protectedProcedure.query(() => listReturns()),
@@ -50,6 +51,7 @@ export const appRouter = router({
     create: protectedProcedure.input(z.object({ contractNumber: z.string().trim().min(2).optional(), customerId: z.number().int().positive(), vehicleId: z.number().int().positive(), vehicleMileage: z.number().int().min(0).optional(), type: z.enum(["daily", "monthly"]), startDate: z.string(), expectedReturnDate: z.string(), rentalAmount: z.string().min(1), days: z.number().int().positive(), totalAmount: z.string().min(1), paidAmount: z.string().optional(), notes: z.string().optional() })).mutation(({ input, ctx }) => createContract({ ...input, createdBy: ctx.user.id })),
     list: protectedProcedure.input(z.object({ status: z.enum(["active", "overdue", "suspended", "closed", "returned"]).optional() }).optional()).query(({ input }) => listContracts(input?.status)),
     details: protectedProcedure.input(z.object({ id: z.number().int().positive() })).query(({ input }) => getContractDetails(input.id)),
+    updateRetroactive: adminProcedure.input(z.object({ id: z.number().int().positive(), contractNumber: z.string().trim().min(2).optional(), customerId: z.number().int().positive().optional(), vehicleId: z.number().int().positive().optional(), type: z.enum(["daily", "monthly"]).optional(), status: z.enum(["active", "overdue", "suspended", "closed", "returned"]).optional(), startDate: z.string().optional(), expectedReturnDate: z.string().optional(), actualReturnDate: z.string().nullable().optional(), rentalAmount: z.string().optional(), days: z.number().int().positive().optional(), totalAmount: z.string().optional(), notes: z.string().nullable().optional(), reason: z.string().trim().min(2) })).mutation(({ input, ctx }) => updateContractRetroactively({ ...input, createdBy: ctx.user.id })),
   }),
   vehicles: router({
     list: protectedProcedure.query(() => listVehicles()),

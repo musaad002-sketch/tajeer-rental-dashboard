@@ -6,6 +6,7 @@ import { buildOperationEffects, getContractReference, validateVehicleSwap } from
 import { nextContractNumber as computeNextContractNumber } from "../shared/contractNumbers";
 import { extendReturnDate, isFinanciallyDistressed } from "../shared/contractCalculation";
 import { calculateContractTotals } from "../shared/contractTotals";
+import { calculateContractBalances } from "../shared/contractBalances";
 import { addAdditionalFee, calculateRateAdjustedTotal } from "../shared/contractFinance";
 import { isMileageAdvanceValid } from "../shared/vehicleMaintenance";
 import { allocatePayment } from "../shared/paymentAllocation";
@@ -47,10 +48,8 @@ export async function listContracts(status?: "active" | "overdue" | "suspended" 
   const paymentRows = ids.length ? await db.select().from(payments).where(inArray(payments.contractId, ids)).orderBy(desc(payments.createdAt)) : [];
   return rows.map((row) => {
     const totals = calculateContractTotals({ baseTotal: row.contract.totalAmount, expectedReturnDate: row.contract.expectedReturnDate, rentalAmount: row.contract.rentalAmount, type: row.contract.type, actualReturnDate: row.contract.actualReturnDate });
-    const outstanding = Math.max(0, Number(totals.grandTotal) - Number(row.contract.paidAmount));
-    const currentCharge = Math.min(outstanding, Number(row.contract.rentalAmount));
-    const previousOutstanding = Math.max(0, outstanding - currentCharge);
-    return { ...row, totals, previousOutstanding: previousOutstanding.toFixed(2) };
+    const balances = calculateContractBalances({ baseTotal: totals.baseTotal, delayTotal: totals.delayTotal, paidAmount: row.contract.paidAmount });
+    return { ...row, totals, ...balances };
   });
 }
 
@@ -211,10 +210,9 @@ export async function recordContractOperation(input: { contractId?: number; cont
   let previousVehicleId: number | undefined;
   let operationDetails = input.details;
   if (input.operation === "payment" && input.amount) {
-    const outstanding = Math.max(0, Number(contract.totalAmount) - Number(contract.paidAmount));
-    const currentCharge = Math.min(outstanding, Number(contract.rentalAmount));
-    const previousOutstanding = Math.max(0, outstanding - currentCharge);
-    const allocation = allocatePayment({ paymentAmount: Number(input.amount), previousOutstanding, currentOutstanding: currentCharge });
+    const totals = calculateContractTotals({ baseTotal: contract.totalAmount, expectedReturnDate: contract.expectedReturnDate, rentalAmount: contract.rentalAmount, type: contract.type, actualReturnDate: contract.actualReturnDate });
+    const balances = calculateContractBalances({ baseTotal: totals.baseTotal, delayTotal: totals.delayTotal, paidAmount: contract.paidAmount });
+    const allocation = allocatePayment({ paymentAmount: Number(input.amount), previousOutstanding: Number(balances.previousOutstanding), currentOutstanding: Number(balances.currentOutstanding) });
     const allocationNote = `تخصيص الدفعة: السابق ${allocation.appliedToPrevious.toFixed(2)} ر.س؛ الحالي ${allocation.appliedToCurrent.toFixed(2)} ر.س${allocation.unapplied > 0 ? `؛ رصيد زائد ${allocation.unapplied.toFixed(2)} ر.س` : ""}`;
     operationDetails = [operationDetails, allocationNote].filter(Boolean).join("؛ ");
   }
@@ -461,4 +459,77 @@ export async function getFleetReport() {
   const result = { total: 0, available: 0, rented: 0, maintenance: 0, unavailable: 0 };
   rows.forEach((row) => { const count = Number(row.count); result.total += count; if (row.status === "available") result.available = count; if (row.status === "rented" || row.status === "reserved") result.rented += count; if (row.status === "maintenance") result.maintenance = count; if (row.status === "unavailable") result.unavailable = count; });
   return result;
+}
+
+
+export async function updateContractRetroactively(input: {
+  id: number;
+  contractNumber?: string;
+  customerId?: number;
+  vehicleId?: number;
+  type?: "daily" | "monthly";
+  status?: "active" | "overdue" | "suspended" | "closed" | "returned";
+  startDate?: string;
+  expectedReturnDate?: string;
+  actualReturnDate?: string | null;
+  rentalAmount?: string;
+  days?: number;
+  totalAmount?: string;
+  notes?: string | null;
+  reason: string;
+  createdBy?: number;
+}) {
+  const db = await getDb(); if (!db) throw new Error("Database unavailable");
+  if (!input.reason.trim()) throw new Error("سبب التعديل مطلوب");
+  const existing = await db.select().from(contracts).where(eq(contracts.id, input.id)).limit(1);
+  const contract = existing[0];
+  if (!contract) throw new Error("العقد غير موجود");
+  const values: Record<string, unknown> = {};
+  if (input.contractNumber !== undefined) values.contractNumber = input.contractNumber.trim();
+  if (input.customerId !== undefined) values.customerId = input.customerId;
+  if (input.vehicleId !== undefined) values.vehicleId = input.vehicleId;
+  if (input.type !== undefined) values.type = input.type;
+  if (input.status !== undefined) values.status = input.status;
+  if (input.startDate !== undefined) values.startDate = new Date(input.startDate);
+  if (input.expectedReturnDate !== undefined) values.expectedReturnDate = new Date(input.expectedReturnDate);
+  if (input.actualReturnDate !== undefined) values.actualReturnDate = input.actualReturnDate ? new Date(input.actualReturnDate) : null;
+  if (input.rentalAmount !== undefined) values.rentalAmount = input.rentalAmount;
+  if (input.days !== undefined) values.days = input.days;
+  if (input.totalAmount !== undefined) values.totalAmount = input.totalAmount;
+  if (input.notes !== undefined) values.notes = input.notes;
+  if (!Object.keys(values).length) throw new Error("لم يتم إدخال أي تعديل");
+  await db.update(contracts).set(values).where(eq(contracts.id, input.id));
+  const changed = Object.keys(values).map((key) => `${key}: ${String((contract as Record<string, unknown>)[key])} ← ${String(values[key])}`).join("؛ ");
+  await db.insert(contractOperations).values({ contractId: input.id, operation: "rate_update", amount: input.totalAmount ?? contract.totalAmount, details: `تعديل عقد بأثر رجعي؛ ${changed}؛ السبب: ${input.reason.trim()}`, createdBy: input.createdBy });
+  return { success: true as const, id: input.id };
+}
+
+export async function updatePaymentRetroactively(input: {
+  id: number;
+  amount?: string;
+  method?: "cash" | "network" | "transfer";
+  notes?: string | null;
+  reason: string;
+  createdBy?: number;
+}) {
+  const db = await getDb(); if (!db) throw new Error("Database unavailable");
+  if (!input.reason.trim()) throw new Error("سبب تعديل الدفعة مطلوب");
+  const existing = await db.select().from(payments).where(eq(payments.id, input.id)).limit(1);
+  const payment = existing[0];
+  if (!payment) throw new Error("الدفعة غير موجودة");
+  const values: Record<string, unknown> = {};
+  if (input.amount !== undefined) {
+    if (!Number.isFinite(Number(input.amount)) || Number(input.amount) <= 0) throw new Error("قيمة الدفعة يجب أن تكون أكبر من صفر");
+    values.amount = input.amount;
+  }
+  if (input.method !== undefined) values.method = input.method;
+  if (input.notes !== undefined) values.notes = input.notes;
+  if (!Object.keys(values).length) throw new Error("لم يتم إدخال أي تعديل");
+  await db.update(payments).set(values).where(eq(payments.id, input.id));
+  const allPayments = await db.select({ amount: payments.amount }).from(payments).where(eq(payments.contractId, payment.contractId));
+  const paidAmount = allPayments.reduce((sum, row) => sum + Number(row.amount), 0);
+  await db.update(contracts).set({ paidAmount: paidAmount.toFixed(2) }).where(eq(contracts.id, payment.contractId));
+  const changed = Object.keys(values).map((key) => `${key}: ${String((payment as Record<string, unknown>)[key])} ← ${String(values[key])}`).join("؛ ");
+  await db.insert(contractOperations).values({ contractId: payment.contractId, operation: "payment", amount: String(values.amount ?? payment.amount), paymentMethod: (values.method ?? payment.method) as "cash" | "network" | "transfer", details: `تعديل دفعة بأثر رجعي #${payment.id}؛ ${changed}؛ السبب: ${input.reason.trim()}`, createdBy: input.createdBy });
+  return { success: true as const, contractId: payment.contractId, paidAmount: paidAmount.toFixed(2) };
 }
