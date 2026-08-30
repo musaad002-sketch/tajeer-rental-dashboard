@@ -1,0 +1,1 @@
+ALTER TABLE `officeLiabilities` ADD `vehicleId` int;

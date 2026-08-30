@@ -41,7 +41,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { user, logout } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const localAuthEnabled = shouldUseLocalAuth(window.location.hostname, import.meta.env.VITE_LOCAL_AUTH_ENABLED === "true");
+  // تأجيرك يعمل محلياً؛ لذلك يبقى الدخول المحلي هو الافتراضي على localhost والمعاينة والموقع المنشور، ولا يُستخدم Manus للمشغّل.
+  const localAuthEnabled = true;
   const { mutate: localLogin, isPending } = trpc.auth.localLogin.useMutation({
     onSuccess: () => window.location.reload(),
     onError: (error) => toast.error(error.message),

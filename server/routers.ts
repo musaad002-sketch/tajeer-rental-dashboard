@@ -16,7 +16,7 @@ export const appRouter = router({
     me: publicProcedure.query(opts => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => { const cookieOptions = getSessionCookieOptions(ctx.req); ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 }); return { success: true } as const; }),
     localLogin: publicProcedure.input(z.object({ username: z.string().min(1), password: z.string().min(1) })).mutation(async ({ input, ctx }) => {
-      if (process.env.LOCAL_AUTH_ENABLED !== "true") throw new Error("Local login is disabled");
+      if (process.env.LOCAL_AUTH_ENABLED === "false") throw new Error("Local login is disabled");
       const managedUser = await getUserByUsername(input.username);
       const expectedUsername = process.env.LOCAL_ADMIN_USERNAME || "admin";
       const expectedPassword = process.env.LOCAL_ADMIN_PASSWORD;

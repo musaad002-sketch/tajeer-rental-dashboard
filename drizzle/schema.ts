@@ -173,6 +173,7 @@ export const officeLiabilities = mysqlTable("officeLiabilities", {
   dueDate: date("dueDate"),
   expenseDate: date("expenseDate"),
   expenseTypeId: int("expenseTypeId"),
+  vehicleId: int("vehicleId"),
   employeeId: int("employeeId"),
   status: liabilityStatus.default("open").notNull(),
   notes: text("notes"),
