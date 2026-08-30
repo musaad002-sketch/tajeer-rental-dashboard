@@ -18,6 +18,7 @@ import { calculateCloseSettlement } from "../shared/closeSettlement";
 import { calculateSuspensionSettlement, statusAfterSuspendedSettlement } from "../shared/suspensionSettlement";
 import { canChargeMonthlyAuthorizationFee } from "../shared/contractScope";
 import { isOtherRevenueReason, paymentReasonLabels } from "../shared/paymentReasons";
+import { buildOfficeInsights } from "../shared/officeInsights";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -494,6 +495,25 @@ export async function createContract(input: { contractNumber?: string; customerI
   const contractNotes = `${input.notes?.trim() ?? ""}${input.vehicleMileage !== undefined ? `${input.notes?.trim() ? "؛ " : ""}قراءة العداد عند فتح العقد: ${input.vehicleMileage.toLocaleString()} كم` : ""}`.trim();
   await db.insert(contractOperations).values({ contractId, operation: "new_contract", vehicleId: input.vehicleId, details: contractNotes ? `إنشاء عقد ${input.type}؛ ملاحظات العقد: ${contractNotes}` : `إنشاء عقد ${input.type}`, createdBy: input.createdBy });
   return { id: contractId, contractNumber };
+}
+
+export async function getOfficeInsights() {
+  const [vehicleRows, contractRows, customerRows, paymentRows, maintenanceRows, operationRows] = await Promise.all([listVehicles(), listContracts(), listCustomers(), listPayments(), listMaintenance(), listAllContractOperations()]);
+  const paymentsByContract = new Map<number, number>();
+  paymentRows.forEach((payment: any) => paymentsByContract.set(payment.contractId, (paymentsByContract.get(payment.contractId) ?? 0) + Number(payment.amount ?? 0)));
+  const maintenanceByVehicle = new Map<number, number>();
+  maintenanceRows.forEach((record: any) => maintenanceByVehicle.set(record.vehicleId, (maintenanceByVehicle.get(record.vehicleId) ?? 0) + Number(record.cost ?? 0)));
+  const contractsByVehicle = new Map<number, any[]>();
+  const vehiclesById = new Map<number, any>(vehicleRows.map((vehicle: any) => [vehicle.id, vehicle]));
+  const customersById = new Map<number, any>(customerRows.map((customer: any) => [customer.id, customer]));
+  contractRows.forEach((contract: any) => { const list = contractsByVehicle.get(contract.vehicleId) ?? []; list.push(contract); contractsByVehicle.set(contract.vehicleId, list); });
+  const insights = buildOfficeInsights({
+    vehicles: vehicleRows.map((vehicle: any) => { const vehicleContracts = contractsByVehicle.get(vehicle.id) ?? []; return { id: vehicle.id, plateNumber: vehicle.plateNumber, rentalDays: vehicleContracts.reduce((sum, contract) => sum + Number(contract.days ?? 0), 0), rentalRevenue: vehicleContracts.reduce((sum, contract) => sum + Number(contract.totalAmount ?? 0), 0), otherRevenue: 0, maintenanceCost: maintenanceByVehicle.get(vehicle.id) ?? 0 }; }),
+    customers: customerRows.map((customer: any) => { const customerContracts = contractRows.filter((contract: any) => contract.customerId === customer.id); return { id: customer.id, fullName: customer.fullName, previousContracts: customerContracts.length, latePaymentContracts: customerContracts.filter((contract: any) => contract.status === "overdue" || Number(contract.totalAmount ?? 0) > (paymentsByContract.get(contract.id) ?? Number(contract.paidAmount ?? 0))).length }; }),
+    contracts: contractRows.map((contract: any) => ({ id: contract.id, contractNumber: contract.contractNumber, customerId: contract.customerId, hasAdvancePayment: Number(paymentsByContract.get(contract.id) ?? contract.paidAmount ?? 0) > 0, durationDays: Number(contract.days ?? 0), customerDataComplete: Boolean(customersById.get(contract.customerId)?.identityNumber && customersById.get(contract.customerId)?.fullName && customersById.get(contract.customerId)?.phone), vehicleInsured: Boolean(vehiclesById.get(contract.vehicleId)?.insuranceExpiryDate && new Date(vehiclesById.get(contract.vehicleId).insuranceExpiryDate).getTime() >= Date.now()), previousDelayDays: contract.status === "overdue" ? -1 : 0, status: contract.status, hasReturnOrExtension: contract.status !== "closed" && contract.status !== "returned" || operationRows.some((operation: any) => operation.contractId === contract.id && ["return", "extension"].includes(operation.operation)) })),
+    operationsToday: operationRows.filter((operation: any) => new Date(operation.createdAt).toDateString() === new Date().toDateString()).map((operation: any) => ({ userId: Number(operation.createdBy ?? 0), userName: "مستخدم النظام", financial: ["payment", "additional_fee", "rate_update"].includes(operation.operation) })),
+  });
+  return insights;
 }
 
 export async function getDashboardAlerts() {

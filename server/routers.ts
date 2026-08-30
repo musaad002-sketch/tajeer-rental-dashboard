@@ -7,7 +7,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { isValidVehicleModelYear } from "../shared/vehicleRules";
 import { canAccess, isOperatorVisibleContractStatus, permissionKeys } from "../shared/permissions";
-import { createCustomer, updateCustomer, deleteCustomerSafely, createMaintenance, updateMaintenance, deleteMaintenanceSafely, createOfficeLiability, updateOfficeLiability, deleteOfficeLiabilitySafely, createContract, deleteContractSafely, deleteOperationSafely, deletePaymentSafely, deleteVehicle, getAccountingSummary, getOperationalAccountingSummary, listPayments, listReturns, getDashboardAlerts, getDashboardSummary, getFleetReport,   getOfficeLiabilitySummary,
+import { createCustomer, updateCustomer, deleteCustomerSafely, createMaintenance, updateMaintenance, deleteMaintenanceSafely, createOfficeLiability, updateOfficeLiability, deleteOfficeLiabilitySafely, createContract, deleteContractSafely, deleteOperationSafely, deletePaymentSafely, deleteVehicle, getAccountingSummary, getOperationalAccountingSummary, listPayments, listReturns, getDashboardAlerts, getDashboardSummary, getFleetReport,   getOfficeLiabilitySummary, getOfficeInsights,
   listExpenseTypes, createExpenseType, listEmployees, createEmployee, getContractDetails, getCustomerDetails, getVehicleDetails, getVehicleRevenueReport, listAvailableVehicles, listVehicles, listContracts, listContractOperations, listAllContractOperations, listCustomers, listMaintenance, listOfficeLiabilities, recordContractOperation, recordOfficeLiabilityPayment, approveOfficeLiability, searchCustomerLedger, updateMaintenanceStatus, createVehicle, updateVehicle, updateContractRetroactively, updatePaymentRetroactively, upsertUser, getUserByUsername, listManagedUsers, createManagedUser, updateManagedUser, hashLocalPassword } from "./db";
 
 export const appRouter = router({
@@ -38,6 +38,7 @@ export const appRouter = router({
   }),
   dashboard: protectedProcedure.query(() => getDashboardSummary()),
   alerts: protectedProcedure.query(() => getDashboardAlerts()),
+  officeEye: adminProcedure.query(() => getOfficeInsights()),
   accounting: protectedProcedure.query(({ ctx }) => canAccess(ctx.user.role, ctx.user.permissions, "accounting") ? (ctx.user.role === "admin" ? getAccountingSummary() : getOperationalAccountingSummary()) : Promise.reject(new TRPCError({ code: "FORBIDDEN", message: "لا تملك صلاحية الحسابات" }))),
   expenseTypes: router({
     list: protectedProcedure.query(() => listExpenseTypes()),
