@@ -197,7 +197,7 @@ export async function deleteCustomerSafely(input: { id: number; reason: string; 
 
 export async function createMaintenance(input: { vehicleId: number; issueType: string; serviceType?: "maintenance" | "oil_change"; mileage?: number; startDate: string; status?: "pending" | "in_progress"; cost?: string; notes?: string }) {
   const db = await getDb(); if (!db) throw new Error("Database unavailable");
-  const vehicle = await db.select({ id: vehicles.id, status: vehicles.status, mileage: vehicles.mileage }).from(vehicles).where(eq(vehicles.id, input.vehicleId)).limit(1);
+  const vehicle = await db.select({ id: vehicles.id, status: vehicles.status, mileage: vehicles.mileage, plateNumber: vehicles.plateNumber }).from(vehicles).where(eq(vehicles.id, input.vehicleId)).limit(1);
   if (!vehicle[0]) throw new Error("السيارة غير موجودة");
   if (vehicle[0].status === "rented" || vehicle[0].status === "reserved") throw new Error("لا يمكن تسجيل صيانة لسيارة مرتبطة بعقد ساري؛ أغلِق العقد أو بدّل السيارة أولاً");
   if (input.mileage !== undefined && (!Number.isInteger(input.mileage) || input.mileage < 0)) throw new Error("قراءة عداد الصيانة يجب أن تكون رقماً صحيحاً غير سالب");
@@ -207,6 +207,8 @@ export async function createMaintenance(input: { vehicleId: number; issueType: s
   const status = serviceType === "oil_change" ? "completed" : input.status ?? "pending";
   const result = await db.insert(maintenanceRecords).values({ ...input, mileage: recordedMileage, serviceType, status, cost: input.cost ?? "0", startDate: new Date(input.startDate), endDate: status === "completed" ? new Date(input.startDate) : null });
   await db.update(vehicles).set(serviceType === "oil_change" ? { mileage: recordedMileage, lastOilChangeMileage: recordedMileage, lastOilChangeDate: new Date(input.startDate), status: "available" } : { mileage: recordedMileage, status: "maintenance" }).where(eq(vehicles.id, input.vehicleId));
+  const paidCost = Number(input.cost) || 0;
+  if (paidCost > 0) await db.insert(officeLiabilities).values({ category: "maintenance", description: `صيانة السيارة ${vehicle[0].plateNumber}`, amount: paidCost.toFixed(2), paidAmount: paidCost.toFixed(2), status: "paid", approvalStatus: "pending", expenseDate: new Date(input.startDate), vehicleId: input.vehicleId, expenseReason: input.issueType.trim(), notes: input.notes ?? null });
   return result[0]?.insertId;
 }
 
