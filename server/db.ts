@@ -663,6 +663,14 @@ export async function getAccountingSummary() {
   return { revenue: String(revenue[0]?.amount ?? "0.00"), outstanding: outstanding.toFixed(2), paymentsCount: Number(paymentsCount[0]?.count ?? 0) };
 }
 
+export async function getOperationalAccountingSummary() {
+  const db = await getDb(); if (!db) return { revenue: "0.00", outstanding: "0.00", paymentsCount: 0, revenueToday: "0.00" };
+  const start = new Date(); start.setHours(0, 0, 0, 0);
+  const revenue = await db.select({ amount: sql<string>`coalesce(sum(${payments.amount}), 0)`, count: sql<number>`count(*)` }).from(payments).where(gte(payments.createdAt, start));
+  const amount = Number(revenue[0]?.amount ?? 0).toFixed(2);
+  return { revenue: amount, outstanding: "0.00", paymentsCount: Number(revenue[0]?.count ?? 0), revenueToday: amount };
+}
+
 export async function getFleetReport() {
   const db = await getDb(); if (!db) return { total: 0, available: 0, rented: 0, maintenance: 0, unavailable: 0 };
   const rows = await db.select({ status: vehicles.status, count: sql<number>`count(*)` }).from(vehicles).groupBy(vehicles.status);
