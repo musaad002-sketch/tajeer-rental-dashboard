@@ -64,6 +64,18 @@ describe("live workflow integrations", () => {
     expect(summary).toEqual(expect.objectContaining({ total: expect.any(String), paid: expect.any(String), outstanding: expect.any(String), count: expect.any(Number) }));
     expect(Number(summary.outstanding)).toBeGreaterThanOrEqual(0);
   }, 15000);
+
+  it.skipIf(!process.env.DATABASE_URL)("does not double count settled customer credits in vehicle revenue", async () => {
+    const caller = appRouter.createCaller(testContext);
+    const [creditRows, firstReport, secondReport] = await Promise.all([caller.liabilities.list(), caller.reports.vehicleRevenue(), caller.reports.vehicleRevenue()]);
+    const customerCredits = creditRows.filter((row) => row.category === "customer_credit_transfer");
+    const expectedPending = customerCredits.reduce((sum, row) => sum + Math.max(0, Number(row.amount) - Number(row.paidAmount ?? 0)), 0);
+    const expectedSettled = customerCredits.reduce((sum, row) => sum + Math.min(Number(row.amount), Number(row.paidAmount ?? 0)), 0);
+    expect(Number(firstReport.totals.pendingCustomerCredits)).toBeCloseTo(expectedPending, 2);
+    expect(Number(firstReport.totals.settledCustomerCredits)).toBeCloseTo(expectedSettled, 2);
+    expect(secondReport.totals.pendingCustomerCredits).toBe(firstReport.totals.pendingCustomerCredits);
+    expect(secondReport.totals.settledCustomerCredits).toBe(firstReport.totals.settledCustomerCredits);
+  }, 15000);
 });
 
 
