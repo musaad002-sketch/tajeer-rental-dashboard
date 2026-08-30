@@ -552,26 +552,36 @@ export async function getOfficeLiabilitySummary() {
 
 export async function getVehicleRevenueReport(filters: { from?: string; to?: string } = {}) {
   const db = await getDb();   if (!db) return { vehicles: [], totals: { baseContractValue: "0.00", contractValue: "0.00", delayTotal: "0.00", grandTotal: "0.00", collected: "0.00", cash: "0.00", network: "0.00", outstanding: "0.00", excludedOutstanding: "0.00", expenses: "0.00", netRevenue: "0.00" } };
-  const contractDateFilter = filters.from || filters.to ? and(filters.from ? gte(contracts.startDate, new Date(filters.from)) : undefined, filters.to ? lte(contracts.startDate, new Date(`${filters.to}T23:59:59`)) : undefined) : undefined;
+  const contractDateFilter = filters.from || filters.to ? and(filters.from ? or(gte(contracts.startDate, new Date(filters.from)), gte(contracts.updatedAt, new Date(filters.from))) : undefined, filters.to ? or(lte(contracts.startDate, new Date(`${filters.to}T23:59:59`)), lte(contracts.updatedAt, new Date(`${filters.to}T23:59:59`))) : undefined) : undefined;
   const paymentDateFilter = filters.from || filters.to ? and(filters.from ? gte(payments.createdAt, new Date(filters.from)) : undefined, filters.to ? lte(payments.createdAt, new Date(`${filters.to}T23:59:59`)) : undefined) : undefined;
   const contractsRows = await db.select({ contract: contracts, vehicle: vehicles }).from(contracts).leftJoin(vehicles, eq(contracts.vehicleId, vehicles.id)).where(contractDateFilter);
   const expenseDateFilter = filters.from || filters.to ? and(filters.from ? gte(officeLiabilities.createdAt, new Date(filters.from)) : undefined, filters.to ? lte(officeLiabilities.createdAt, new Date(`${filters.to}T23:59:59`)) : undefined) : undefined;
   const expenseRows = await db.select({ amount: officeLiabilities.amount }).from(officeLiabilities).where(expenseDateFilter);
   const paymentsRows = await db.select({ payment: payments, contract: contracts, vehicle: vehicles }).from(payments).innerJoin(contracts, eq(payments.contractId, contracts.id)).leftJoin(vehicles, eq(contracts.vehicleId, vehicles.id)).where(paymentDateFilter);
+  const paymentPresenceRows = await db.select({ contractId: payments.contractId }).from(payments);
+  const contractsWithPayments = new Set(paymentPresenceRows.map((row) => row.contractId));
   const excludedOutstanding = contractsRows.filter(({ contract }) => contract.status === "overdue" || contract.status === "suspended").reduce((sum, { contract }) => { const totals = calculateContractTotals({ baseTotal: contract.totalAmount, expectedReturnDate: contract.expectedReturnDate, rentalAmount: contract.rentalAmount, type: contract.type, actualReturnDate: contract.actualReturnDate }); return sum + Math.max(0, Number(totals.grandTotal) - Number(contract.paidAmount)); }, 0);
   const byVehicle = new Map<number, { vehicleId: number; vehicleName: string; plateNumber: string; baseContractValue: number; delayTotal: number; grandTotal: number; collected: number; cash: number; network: number; outstanding: number; months: Array<{ month: string; collected: string; cash: string; network: string }> }>();
   for (const row of contractsRows) {
-    if (!row.vehicle || row.contract.status === "overdue" || row.contract.status === "suspended") continue;
+    if (!row.vehicle) continue;
     const current = byVehicle.get(row.vehicle.id) ?? { vehicleId: row.vehicle.id, vehicleName: `${row.vehicle.make} ${row.vehicle.model}`, plateNumber: row.vehicle.plateNumber, baseContractValue: 0, delayTotal: 0, grandTotal: 0, collected: 0, cash: 0, network: 0, outstanding: 0, months: [] };
     const totals = calculateContractTotals({ baseTotal: row.contract.totalAmount, expectedReturnDate: row.contract.expectedReturnDate, rentalAmount: row.contract.rentalAmount, type: row.contract.type, actualReturnDate: row.contract.actualReturnDate });
-    current.baseContractValue += Number(totals.baseTotal);
-    current.delayTotal += Number(totals.delayTotal);
-    current.grandTotal += Number(totals.grandTotal);
-    current.outstanding += Math.max(0, Number(totals.grandTotal) - Number(row.contract.paidAmount));
+    if (row.contract.status !== "overdue" && row.contract.status !== "suspended") {
+      current.baseContractValue += Number(totals.baseTotal);
+      current.delayTotal += Number(totals.delayTotal);
+      current.grandTotal += Number(totals.grandTotal);
+      current.outstanding += Math.max(0, Number(totals.grandTotal) - Number(row.contract.paidAmount));
+    }
+    if (!contractsWithPayments.has(row.contract.id) && Number(row.contract.paidAmount) > 0) {
+      const month = new Date(row.contract.startDate).toISOString().slice(0, 7);
+      const legacyAmount = Number(row.contract.paidAmount);
+      current.collected += legacyAmount;
+      current.months.push({ month, collected: legacyAmount.toFixed(2), cash: "0.00", network: "0.00" });
+    }
     byVehicle.set(row.vehicle.id, current);
   }
   for (const row of paymentsRows) {
-    if (!row.vehicle || row.contract.status === "overdue" || row.contract.status === "suspended") continue;
+    if (!row.vehicle) continue;
     const current = byVehicle.get(row.vehicle.id) ?? { vehicleId: row.vehicle.id, vehicleName: `${row.vehicle.make} ${row.vehicle.model}`, plateNumber: row.vehicle.plateNumber, baseContractValue: 0, delayTotal: 0, grandTotal: 0, collected: 0, cash: 0, network: 0, outstanding: 0, months: [] };
     const month = new Date(row.payment.createdAt).toISOString().slice(0, 7);
     const amount = Number(row.payment.amount);

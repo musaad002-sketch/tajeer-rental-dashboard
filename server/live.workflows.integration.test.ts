@@ -65,3 +65,15 @@ describe("live workflow integrations", () => {
     expect(Number(summary.outstanding)).toBeGreaterThanOrEqual(0);
   }, 15000);
 });
+
+
+  it.skipIf(!process.env.DATABASE_URL)("includes the paid amount of retroactively settled contract 1002 in vehicle revenue", async () => {
+    const caller = appRouter.createCaller(testContext);
+    const contracts = await caller.contracts.list();
+    const target = contracts.find((row) => row.contract.contractNumber === "1002");
+    if (!target || !target.vehicle) return;
+    const report = await caller.reports.vehicleRevenue();
+    const vehicleRow = report.vehicles.find((row) => row.vehicleId === target.vehicle?.id);
+    expect(vehicleRow).toBeDefined();
+    expect(Number(vehicleRow?.collected ?? 0)).toBeGreaterThanOrEqual(Number(target.contract.paidAmount));
+  }, 15000);

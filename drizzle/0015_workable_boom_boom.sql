@@ -1,0 +1,1 @@
+ALTER TABLE `officeLiabilities` MODIFY COLUMN `paymentMethod` enum('cash','network','transfer','mixed');
