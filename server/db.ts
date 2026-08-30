@@ -569,7 +569,7 @@ export async function createEmployee(input: { fullName: string; salary: string; 
   return db.insert(employees).values({ fullName: input.fullName.trim(), salary: input.salary, hireDate: new Date(input.hireDate) });
 }
 
-export async function createOfficeLiability(input: { category: string; description: string; amount: string; dueDate?: string; expenseDate?: string; expenseTypeId?: number; employeeId?: number; notes?: string; expenseReason?: string; contractNumber?: string; createdBy?: number }) {
+export async function createOfficeLiability(input: { category: string; description: string; amount: string; dueDate?: string; expenseDate?: string; expenseTypeId?: number; employeeId?: number; notes?: string; expenseReason?: string; contractNumber?: string; paymentMethod?: "cash" | "network" | "transfer"; createdBy?: number }) {
   const db = await getDb(); if (!db) throw new Error("Database unavailable");
   if (!input.description.trim() || !input.amount.trim() || Number(input.amount) <= 0) throw new Error("بيانات المصروف غير صحيحة");
   if (input.contractNumber && !input.expenseReason?.trim()) throw new Error("سبب تحويل الدائن مطلوب عند ربط المصروف بعقد");
@@ -617,12 +617,13 @@ export async function getOfficeLiabilitySummary() {
 }
 
 export async function getVehicleRevenueReport(filters: { from?: string; to?: string } = {}) {
-  const db = await getDb();   if (!db) return { vehicles: [], totals: { baseContractValue: "0.00", contractValue: "0.00", delayTotal: "0.00", grandTotal: "0.00", collected: "0.00", otherRevenue: "0.00", cash: "0.00", network: "0.00", outstanding: "0.00", excludedOutstanding: "0.00", expenses: "0.00", netRevenue: "0.00" } };
+  const db = await getDb();   if (!db) return { vehicles: [], totals: { baseContractValue: "0.00", contractValue: "0.00", delayTotal: "0.00", grandTotal: "0.00", collected: "0.00", otherRevenue: "0.00", cash: "0.00", network: "0.00", outstanding: "0.00", excludedOutstanding: "0.00", expenses: "0.00", pendingCustomerCredits: "0.00", settledCustomerCredits: "0.00", netRevenue: "0.00" } };
   const contractDateFilter = filters.from || filters.to ? and(filters.from ? or(gte(contracts.startDate, new Date(filters.from)), gte(contracts.updatedAt, new Date(filters.from))) : undefined, filters.to ? or(lte(contracts.startDate, new Date(`${filters.to}T23:59:59`)), lte(contracts.updatedAt, new Date(`${filters.to}T23:59:59`))) : undefined) : undefined;
   const paymentDateFilter = filters.from || filters.to ? and(filters.from ? gte(payments.createdAt, new Date(filters.from)) : undefined, filters.to ? lte(payments.createdAt, new Date(`${filters.to}T23:59:59`)) : undefined) : undefined;
   const contractsRows = await db.select({ contract: contracts, vehicle: vehicles }).from(contracts).leftJoin(vehicles, eq(contracts.vehicleId, vehicles.id)).where(contractDateFilter);
   const expenseDateFilter = filters.from || filters.to ? and(filters.from ? sql`COALESCE(${officeLiabilities.expenseDate}, ${officeLiabilities.createdAt}) >= ${new Date(filters.from)}` : undefined, filters.to ? sql`COALESCE(${officeLiabilities.expenseDate}, ${officeLiabilities.createdAt}) <= ${new Date(`${filters.to}T23:59:59`)}` : undefined) : undefined;
-  const expenseRows = await db.select({ amount: officeLiabilities.amount }).from(officeLiabilities).where(and(expenseDateFilter, eq(officeLiabilities.approvalStatus, "approved")));
+  const expenseRows = await db.select({ amount: officeLiabilities.amount, category: officeLiabilities.category }).from(officeLiabilities).where(and(expenseDateFilter, eq(officeLiabilities.approvalStatus, "approved")));
+  const customerCreditRows = await db.select({ amount: officeLiabilities.amount, paidAmount: officeLiabilities.paidAmount, category: officeLiabilities.category }).from(officeLiabilities).where(and(expenseDateFilter, eq(officeLiabilities.category, "customer_credit_transfer")));
   const paymentsRows = await db.select({ payment: payments, contract: contracts, vehicle: vehicles }).from(payments).innerJoin(contracts, eq(payments.contractId, contracts.id)).leftJoin(vehicles, eq(contracts.vehicleId, vehicles.id)).where(paymentDateFilter);
   const paymentPresenceRows = await db.select({ contractId: payments.contractId }).from(payments);
   const contractsWithPayments = new Set(paymentPresenceRows.map((row) => row.contractId));
@@ -676,7 +677,10 @@ export async function getVehicleRevenueReport(filters: { from?: string; to?: str
     byVehicle.set(row.vehicle.id, current);
   }
   const report = Array.from(byVehicle.values()).map((row) => ({ ...row, baseContractValue: row.baseContractValue.toFixed(2), contractValue: row.baseContractValue.toFixed(2), delayTotal: row.delayTotal.toFixed(2), grandTotal: row.grandTotal.toFixed(2), collected: row.collected.toFixed(2), otherRevenue: row.otherRevenue.toFixed(2), cash: row.cash.toFixed(2), network: row.network.toFixed(2), outstanding: row.outstanding.toFixed(2), months: row.months.sort((a, b) => b.month.localeCompare(a.month)) }));
-  const totals = { baseContractValue: report.reduce((sum, row) => sum + Number(row.baseContractValue), 0), contractValue: report.reduce((sum, row) => sum + Number(row.baseContractValue), 0), delayTotal: report.reduce((sum, row) => sum + Number(row.delayTotal), 0), grandTotal: report.reduce((sum, row) => sum + Number(row.grandTotal), 0), collected: report.reduce((sum, row) => sum + Number(row.collected), 0), otherRevenue: report.reduce((sum, row) => sum + Number(row.otherRevenue), 0), cash: report.reduce((sum, row) => sum + Number(row.cash), 0), network: report.reduce((sum, row) => sum + Number(row.network), 0), outstanding: report.reduce((sum, row) => sum + Number(row.outstanding), 0), excludedOutstanding, expenses: expenseRows.reduce((sum, row) => sum + Number(row.amount), 0) };
+  const expenses = expenseRows.filter((row) => row.category !== "customer_credit_transfer").reduce((sum, row) => sum + Number(row.amount), 0);
+  const pendingCustomerCredits = customerCreditRows.reduce((sum, row) => sum + Math.max(0, Number(row.amount) - Number(row.paidAmount ?? 0)), 0);
+  const settledCustomerCredits = customerCreditRows.reduce((sum, row) => sum + Math.min(Number(row.amount), Number(row.paidAmount ?? 0)), 0);
+  const totals = { baseContractValue: report.reduce((sum, row) => sum + Number(row.baseContractValue), 0), contractValue: report.reduce((sum, row) => sum + Number(row.baseContractValue), 0), delayTotal: report.reduce((sum, row) => sum + Number(row.delayTotal), 0), grandTotal: report.reduce((sum, row) => sum + Number(row.grandTotal), 0), collected: report.reduce((sum, row) => sum + Number(row.collected), 0), otherRevenue: report.reduce((sum, row) => sum + Number(row.otherRevenue), 0), cash: report.reduce((sum, row) => sum + Number(row.cash), 0), network: report.reduce((sum, row) => sum + Number(row.network), 0), outstanding: report.reduce((sum, row) => sum + Number(row.outstanding), 0), excludedOutstanding, expenses, pendingCustomerCredits, settledCustomerCredits };
   return { vehicles: report, totals: { ...Object.fromEntries(Object.entries(totals).map(([key, value]) => [key, Number(value).toFixed(2)])), netRevenue: Math.max(0, totals.collected + totals.otherRevenue - totals.expenses).toFixed(2) } };
 }
 

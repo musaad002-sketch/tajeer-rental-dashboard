@@ -227,7 +227,7 @@ function VehicleEditor({ vehicle }: { vehicle: { id: number; mileage: number; la
       <CardContent>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {fields.map(([key, label, type]) => (
-            <label key={key} className="text-xs font-semibold text-slate-600">{label}
+            <label key={key} className="text-xs font-semibold text-slate-600" style={{display: 'none'}}>{label}
               <Input type={type} inputMode={type === "number" ? "numeric" : undefined} min={key === "oilChangeInterval" ? 1 : type === "number" ? 0 : undefined} value={values[key]} onChange={(event: ChangeEvent<HTMLInputElement>) => set(key, event.target.value)} className="mt-1 min-h-11 bg-white" />
             </label>
           ))}

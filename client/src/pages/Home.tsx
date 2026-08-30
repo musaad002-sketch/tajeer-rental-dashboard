@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { formatContractRows } from "@shared/contractView";
 import { getOperatingCycle } from "@shared/rentalRules";
 import ContractOperationsPanel from "@/components/ContractOperationsPanel";
+import OperatorExpensePanel from "@/components/OperatorExpensePanel";
 import NewContractInline from "@/components/NewContractInline";
 import { AlertTriangle, ArrowUpLeft, BellRing, CalendarDays, CarFront, CheckCircle2, ChevronDown, CircleDollarSign, ClipboardCheck, Clock3, Gauge, Search, WalletCards, Wrench } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -46,6 +47,7 @@ export default function Home() {
     <NewContractInline />
 
     <section aria-label="تشغيل العقد" className="space-y-4"><ContractOperationsPanel /></section>
+    {user?.role !== "admin" ? <section aria-label="مصروفات المشغّل" className="space-y-4"><OperatorExpensePanel /></section> : null}
 
     <section className="grid gap-5 lg:grid-cols-2"><Card className="border-0 shadow-[0_8px_28px_rgba(22,34,53,0.06)]"><CardHeader><CardTitle className="text-base">ملخص الإيرادات</CardTitle><p className="mt-1 text-xs text-slate-400">راجع الدفعات والإيرادات الفعلية من وحدة الحسابات.</p></CardHeader><CardContent className="flex min-h-[170px] flex-col items-center justify-center rounded-xl bg-slate-50/70 text-center"><WalletCards aria-hidden="true" className="h-8 w-8 text-[#139f95]" /><p className="mt-3 text-sm font-semibold text-slate-700">تفاصيل الدفعات والإيرادات محفوظة في الحسابات</p><Button variant="outline" className="mt-4 min-h-10 gap-2 text-xs" onClick={() => setLocation("/accounting")}><Gauge aria-hidden="true" className="h-4 w-4 text-[#139f95]" /> فتح الحسابات</Button></CardContent></Card><Card className="border-0 shadow-[0_8px_28px_rgba(22,34,53,0.06)]"><CardHeader><CardTitle className="text-base">كشف حساب العميل</CardTitle><p className="mt-1 text-xs text-slate-400">ابحث بالاسم أو رقم الهوية أو العقد من شاشة العملاء.</p></CardHeader><CardContent className="flex min-h-[170px] flex-col items-center justify-center rounded-xl bg-slate-50/70 text-center"><Search aria-hidden="true" className="h-8 w-8 text-[#139f95]" /><p className="mt-3 text-sm font-semibold text-slate-700">راجع عقود ودفعات العميل</p><Button variant="outline" className="mt-4 min-h-10 gap-2 text-xs" onClick={() => setLocation("/customers")}><Gauge aria-hidden="true" className="h-4 w-4 text-[#139f95]" /> فتح العملاء</Button></CardContent></Card></section>
 
