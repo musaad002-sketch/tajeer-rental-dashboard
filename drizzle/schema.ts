@@ -33,6 +33,7 @@ export const customers = mysqlTable("customers", {
   identityNumber: varchar("identityNumber", { length: 64 }).notNull().unique(),
   fullName: varchar("fullName", { length: 160 }).notNull(),
   phone: varchar("phone", { length: 32 }).notNull(),
+  phoneSecondary: varchar("phoneSecondary", { length: 32 }),
   email: varchar("email", { length: 320 }),
   notes: text("notes"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),

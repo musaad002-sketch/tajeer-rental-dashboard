@@ -176,15 +176,15 @@ export async function getDashboardSummary() {
   return { activeContracts: Number(active[0]?.count ?? 0), overdueContracts: Number(overdue[0]?.count ?? 0), suspendedContracts: Number(suspended[0]?.count ?? 0), availableVehicles: Number(available[0]?.count ?? 0), totalVehicles: Number(totalVehicles[0]?.count ?? 0), rentedVehicles: Number(rentedVehicles[0]?.count ?? 0), outstandingAmount: String(outstanding[0]?.amount ?? "0.00"), maintenanceVehicles: Number(maintenance[0]?.count ?? 0), oilDueVehicles: Number(oilDue[0]?.count ?? 0), expiringDocuments: Number(expiringDocuments[0]?.count ?? 0), todayPayments: String(todayPayments[0]?.amount ?? "0.00") };
 }
 
-export async function createCustomer(input: { identityNumber: string; fullName: string; phone: string; email?: string; notes?: string }) {
+export async function createCustomer(input: { identityNumber: string; fullName: string; phone: string; phoneSecondary?: string; email?: string; notes?: string }) {
   const db = await getDb(); if (!db) throw new Error("Database unavailable");
   const result = await db.insert(customers).values(input); return result[0]?.insertId;
 }
 
-export async function updateCustomer(input: { id: number; identityNumber?: string; fullName?: string; phone?: string; email?: string | null; notes?: string | null; reason: string; updatedBy?: number }) {
+export async function updateCustomer(input: { id: number; identityNumber?: string; fullName?: string; phone?: string; phoneSecondary?: string | null; email?: string | null; notes?: string | null; reason: string; updatedBy?: number }) {
   const db = await getDb(); if (!db) throw new Error("Database unavailable"); if (!input.reason.trim()) throw new Error("سبب تعديل العميل مطلوب");
   const existing = await db.select().from(customers).where(eq(customers.id, input.id)).limit(1); const customer = existing[0]; if (!customer) throw new Error("العميل غير موجود");
-  const values: Record<string, unknown> = {}; for (const key of ["identityNumber", "fullName", "phone", "email", "notes"] as const) if (input[key] !== undefined) values[key] = input[key];
+  const values: Record<string, unknown> = {}; for (const key of ["identityNumber", "fullName", "phone", "phoneSecondary", "email", "notes"] as const) if (input[key] !== undefined) values[key] = input[key];
   await db.update(customers).set(values).where(eq(customers.id, input.id)); await db.insert(deletionAudits).values({ entityType: "customer_edit", entityId: input.id, snapshot: JSON.stringify({ before: customer, after: values }), reason: input.reason.trim(), deletedBy: input.updatedBy }); return { success: true as const };
 }
 

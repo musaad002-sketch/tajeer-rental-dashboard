@@ -88,8 +88,8 @@ export const appRouter = router({
     list: protectedProcedure.query(() => listCustomers()),
     details: protectedProcedure.input(z.object({ id: z.number().int().positive() })).query(({ input }) => getCustomerDetails(input.id)),
     ledger: protectedProcedure.input(z.object({ query: z.string().min(1) })).query(({ input }) => searchCustomerLedger(input.query)),
-    create: protectedProcedure.input(z.object({ identityNumber: z.string().min(1), fullName: z.string().min(2), phone: z.string().min(5), email: z.string().email().optional(), notes: z.string().optional() })).mutation(({ input }) => createCustomer(input)),
-    update: adminProcedure.input(z.object({ id: z.number().int().positive(), identityNumber: z.string().min(1).optional(), fullName: z.string().min(2).optional(), phone: z.string().min(5).optional(), email: z.string().email().nullable().optional(), notes: z.string().nullable().optional(), reason: z.string().trim().min(2) })).mutation(({ input, ctx }) => updateCustomer({ ...input, updatedBy: ctx.user.id })),
+    create: protectedProcedure.input(z.object({ identityNumber: z.string().min(1), fullName: z.string().min(2), phone: z.string().min(5), phoneSecondary: z.string().min(5).optional(), email: z.string().email().optional(), notes: z.string().optional() })).mutation(({ input }) => createCustomer(input)),
+    update: adminProcedure.input(z.object({ id: z.number().int().positive(), identityNumber: z.string().min(1).optional(), fullName: z.string().min(2).optional(), phone: z.string().min(5).optional(), phoneSecondary: z.string().min(5).nullable().optional(), email: z.string().email().nullable().optional(), notes: z.string().nullable().optional(), reason: z.string().trim().min(2) })).mutation(({ input, ctx }) => updateCustomer({ ...input, updatedBy: ctx.user.id })),
     deleteSafely: adminProcedure.input(z.object({ id: z.number().int().positive(), reason: z.string().trim().min(2) })).mutation(({ input, ctx }) => deleteCustomerSafely({ ...input, deletedBy: ctx.user.id })),
   }),
   operations: router({
