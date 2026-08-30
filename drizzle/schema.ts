@@ -26,6 +26,7 @@ export const maintenanceStatus = mysqlEnum("maintenanceStatus", ["pending", "in_
 export const maintenanceType = mysqlEnum("maintenanceType", ["maintenance", "oil_change"]);
 export const liabilityStatus = mysqlEnum("liabilityStatus", ["open", "partially_paid", "paid", "cancelled"]);
 export const expenseApprovalStatus = mysqlEnum("expenseApprovalStatus", ["pending", "approved", "rejected"]);
+export const backupRunStatus = mysqlEnum("backupRunStatus", ["started", "succeeded", "failed"]);
 
 export const customers = mysqlTable("customers", {
   id: int("id").autoincrement().primaryKey(),
@@ -147,6 +148,20 @@ export const employees = mysqlTable("employees", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
+export const backupRuns = mysqlTable("backupRuns", {
+  id: int("id").autoincrement().primaryKey(),
+  taskUid: varchar("taskUid", { length: 65 }).notNull(),
+  runKey: varchar("runKey", { length: 160 }).notNull().unique(),
+  status: backupRunStatus.default("started").notNull(),
+  generatedAt: timestamp("generatedAt").notNull(),
+  sentAt: timestamp("sentAt"),
+  backupKey: text("backupKey"),
+  dailyReportKey: text("dailyReportKey"),
+  monthlyReportKey: text("monthlyReportKey"),
+  error: text("error"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({ taskIdx: index("backup_runs_task_idx").on(table.taskUid), runKeyIdx: index("backup_runs_run_key_idx").on(table.runKey) }));
+
 export const officeLiabilities = mysqlTable("officeLiabilities", {
   id: int("id").autoincrement().primaryKey(),
   category: varchar("category", { length: 100 }).notNull(),
@@ -179,5 +194,6 @@ export type ContractOperation = typeof contractOperations.$inferSelect;
 export type Payment = typeof payments.$inferSelect;
 export type MaintenanceRecord = typeof maintenanceRecords.$inferSelect;
 export type OfficeLiability = typeof officeLiabilities.$inferSelect;
+export type BackupRun = typeof backupRuns.$inferSelect;
 export type ExpenseType = typeof expenseTypes.$inferSelect;
 export type Employee = typeof employees.$inferSelect;

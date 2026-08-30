@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { eq } from "drizzle-orm";
 import { sdk } from "./_core/sdk";
 import { getDb } from "./db";
 import {
@@ -13,6 +14,7 @@ import {
   expenseTypes,
   employees,
   officeLiabilities,
+  backupRuns,
 } from "../drizzle/schema";
 import { storageGetSignedUrl, storagePut } from "./storage";
 
@@ -28,6 +30,7 @@ const TABLES = [
   ["expenseTypes", expenseTypes],
   ["employees", employees],
   ["officeLiabilities", officeLiabilities],
+  ["backupRuns", backupRuns],
 ] as const;
 
 type Row = Record<string, unknown>;
@@ -46,6 +49,10 @@ function sqlValue(value: unknown): string {
   if (typeof value === "bigint" || typeof value === "number") return String(value);
   if (typeof value === "boolean") return value ? "1" : "0";
   return `'${String(value).replace(/\\/g, "\\\\").replace(/'/g, "''")}'`;
+}
+
+export function getBackupDayKey(date: Date): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh", year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
 }
 
 function buildSql(tableName: string, rows: Row[]): string {
@@ -69,6 +76,13 @@ export async function scheduledDailyBackup(req: Request, res: Response) {
     const user = await sdk.authenticateRequest(req);
     if (!user?.isCron || !user.taskUid) return res.status(403).json({ error: "cron-only" });
     const db = await getDb();
+    if (!db) throw new Error("Database unavailable");
+    const dayKey = getBackupDayKey(startedAt);
+    const runKey = `${user.taskUid}:${dayKey}`;
+    const existing = await db.select().from(backupRuns).where(eq(backupRuns.runKey, runKey)).limit(1);
+    if (existing[0]?.status === "succeeded") return res.json({ ok: true, skipped: "already-completed", runKey, generatedAt: existing[0].generatedAt });
+    if (existing[0]?.status === "started") return res.json({ ok: true, skipped: "already-running", runKey });
+    await db.insert(backupRuns).values({ taskUid: user.taskUid, runKey, status: "started", generatedAt: startedAt });
     const rows = await readAllRows(db);
     const stamp = startedAt.toISOString().replace(/[:.]/g, "-");
     const allRows = Object.values(rows).reduce((total, tableRows) => total + tableRows.length, 0);
@@ -96,9 +110,18 @@ export async function scheduledDailyBackup(req: Request, res: Response) {
       storageGetSignedUrl(daily.key),
       storageGetSignedUrl(monthly.key),
     ]);
-    return res.json({ ok: true, generatedAt: startedAt.toISOString(), expiresIn: "storage-provider-default", files: { backup: backupUrl, dailyReport: dailyUrl, monthlyReport: monthlyUrl }, tableCounts: report.tableCounts });
+    await db.update(backupRuns).set({ status: "succeeded", backupKey: backup.key, dailyReportKey: daily.key, monthlyReportKey: monthly.key }).where(eq(backupRuns.runKey, runKey));
+    return res.json({ ok: true, runKey, generatedAt: startedAt.toISOString(), expiresIn: "storage-provider-default", files: { backup: backupUrl, dailyReport: dailyUrl, monthlyReport: monthlyUrl }, tableCounts: report.tableCounts });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    try {
+      const db = await getDb();
+      const user = await sdk.authenticateRequest(req);
+      if (db && user?.isCron && user.taskUid) {
+        const dayKey = getBackupDayKey(startedAt);
+        await db.update(backupRuns).set({ status: "failed", error: message }).where(eq(backupRuns.runKey, `${user.taskUid}:${dayKey}`));
+      }
+    } catch (logError) { console.warn("[Backup] Failed to persist error log", logError); }
     return res.status(500).json({ error: message, timestamp: new Date().toISOString(), context: { url: req.originalUrl } });
   }
 }

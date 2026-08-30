@@ -141,6 +141,13 @@
       "when": 1788052003115,
       "tag": "0019_mysterious_blob",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "5",
+      "when": 1788059027107,
+      "tag": "0020_chemical_proteus",
+      "breakpoints": true
     }
   ]
 }
