@@ -38,7 +38,7 @@ export const appRouter = router({
   }),
   dashboard: protectedProcedure.query(() => getDashboardSummary()),
   alerts: protectedProcedure.query(() => getDashboardAlerts()),
-  accounting: protectedProcedure.query(({ ctx }) => canAccess(ctx.user.role, ctx.user.permissions, "accounting") ? (ctx.user.role === "admin" ? getAccountingSummary() : getOperationalAccountingSummary()) : Promise.reject(new TRPCError({ code: "FORBIDDEN", message: "لا تملك صلاحية الحسابات" })) ),
+  accounting: protectedProcedure.query(({ ctx }) => canAccess(ctx.user.role, ctx.user.permissions, "accounting") ? (ctx.user.role === "admin" ? getAccountingSummary() : getOperationalAccountingSummary()) : Promise.reject(new TRPCError({ code: "FORBIDDEN", message: "لا تملك صلاحية الحسابات" }))),
   expenseTypes: router({
     list: protectedProcedure.query(() => listExpenseTypes()),
     create: adminProcedure.input(z.object({ name: z.string().min(2), recurrence: z.enum(["one_time", "monthly", "quarterly", "semiannual", "annual"]), defaultAmount: z.string().optional() })).mutation(({ input }) => createExpenseType(input)),
