@@ -74,6 +74,7 @@ export const contracts = mysqlTable("contracts", {
   totalAmount: decimal("totalAmount", { precision: 10, scale: 2 }).notNull(),
   paidAmount: decimal("paidAmount", { precision: 10, scale: 2 }).default("0").notNull(),
   notes: text("notes"),
+  createdBy: int("createdBy"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => ({ statusIdx: index("contracts_status_idx").on(table.status), customerIdx: index("contracts_customer_idx").on(table.customerId), vehicleIdx: index("contracts_vehicle_idx").on(table.vehicleId) }));

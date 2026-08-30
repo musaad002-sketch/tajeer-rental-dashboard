@@ -487,7 +487,7 @@ export async function createContract(input: { contractNumber?: string; customerI
   if (input.vehicleMileage !== undefined && !isMileageAdvanceValid(selectedVehicle.mileage, input.vehicleMileage)) throw new Error("قراءة العداد الجديدة لا يمكن أن تكون أقل من القراءة الحالية");
   const contractNumber = input.contractNumber?.trim() || await nextContractNumber();
   const { vehicleMileage: _vehicleMileage, ...contractInput } = input;
-  const result = await db.insert(contracts).values({ ...contractInput, contractNumber, startDate: new Date(input.startDate), expectedReturnDate: new Date(input.expectedReturnDate), paidAmount: input.paidAmount ?? "0" });
+  const result = await db.insert(contracts).values({ ...contractInput, contractNumber, startDate: new Date(input.startDate), expectedReturnDate: new Date(input.expectedReturnDate), paidAmount: input.paidAmount ?? "0", createdBy: input.createdBy ?? null });
   const contractId = Number(result[0]?.insertId);
   await db.update(vehicles).set({ status: "rented", ...(input.vehicleMileage !== undefined ? { mileage: input.vehicleMileage } : {}) }).where(eq(vehicles.id, input.vehicleId!));
   const contractNotes = `${input.notes?.trim() ?? ""}${input.vehicleMileage !== undefined ? `${input.notes?.trim() ? "؛ " : ""}قراءة العداد عند فتح العقد: ${input.vehicleMileage.toLocaleString()} كم` : ""}`.trim();
