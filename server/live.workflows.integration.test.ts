@@ -32,7 +32,7 @@ describe("live workflow integrations", () => {
   it.skipIf(!process.env.DATABASE_URL)("returns separated vehicle revenue totals and monthly collections", async () => {
     const caller = appRouter.createCaller(testContext);
     const report = await caller.reports.vehicleRevenue();
-    expect(report.totals).toEqual(expect.objectContaining({ contractValue: expect.any(String), collected: expect.any(String), cash: expect.any(String), network: expect.any(String), outstanding: expect.any(String), excludedOutstanding: expect.any(String), expenses: expect.any(String), netRevenue: expect.any(String) }));
+    expect(report.totals).toEqual(expect.objectContaining({ contractValue: expect.any(String), collected: expect.any(String), otherRevenue: expect.any(String), cash: expect.any(String), network: expect.any(String), outstanding: expect.any(String), excludedOutstanding: expect.any(String), expenses: expect.any(String), netRevenue: expect.any(String) }));
     expect(report.vehicles.every((row) => typeof row.vehicleId === "number" && Array.isArray(row.months))).toBe(true);
     expect(report.vehicles.every((row) => Number(row.collected) >= 0 && Number(row.cash) >= 0 && Number(row.network) >= 0 && Number(row.outstanding) >= 0)).toBe(true);
   }, 15000);
@@ -75,5 +75,9 @@ describe("live workflow integrations", () => {
     const report = await caller.reports.vehicleRevenue();
     const vehicleRow = report.vehicles.find((row) => row.vehicleId === target.vehicle?.id);
     expect(vehicleRow).toBeDefined();
-    expect(Number(vehicleRow?.collected ?? 0)).toBeGreaterThanOrEqual(Number(target.contract.paidAmount));
+    const rentalRevenue = Number(vehicleRow?.collected ?? 0);
+    const otherRevenue = Number(vehicleRow?.otherRevenue ?? 0);
+    expect(rentalRevenue).toBe(2500);
+    expect(otherRevenue).toBe(5175);
+    expect(rentalRevenue + otherRevenue).toBe(Number(target.contract.paidAmount));
   }, 15000);
