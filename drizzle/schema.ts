@@ -25,6 +25,7 @@ export const paymentMethod = mysqlEnum("paymentMethod", ["cash", "network", "tra
 export const maintenanceStatus = mysqlEnum("maintenanceStatus", ["pending", "in_progress", "completed", "written_off"]);
 export const maintenanceType = mysqlEnum("maintenanceType", ["maintenance", "oil_change"]);
 export const liabilityStatus = mysqlEnum("liabilityStatus", ["open", "partially_paid", "paid", "cancelled"]);
+export const expenseApprovalStatus = mysqlEnum("expenseApprovalStatus", ["pending", "approved", "rejected"]);
 
 export const customers = mysqlTable("customers", {
   id: int("id").autoincrement().primaryKey(),
@@ -161,6 +162,9 @@ export const officeLiabilities = mysqlTable("officeLiabilities", {
   expenseReason: varchar("expenseReason", { length: 240 }),
   contractNumber: varchar("contractNumber", { length: 32 }),
   paymentMethod: paymentMethod,
+  approvalStatus: expenseApprovalStatus.default("pending").notNull(),
+  approvedBy: int("approvedBy"),
+  approvedAt: timestamp("approvedAt"),
   createdBy: int("createdBy"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

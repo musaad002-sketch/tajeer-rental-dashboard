@@ -7,6 +7,7 @@ import { buildOperationEffects, getContractReference, validateVehicleSwap } from
 import { nextContractNumber as computeNextContractNumber } from "../shared/contractNumbers";
 import { extendReturnDate, isFinanciallyDistressed } from "../shared/contractCalculation";
 import { calculateContractTotals } from "../shared/contractTotals";
+import { isExpenseIncludedInNetRevenue } from "../shared/expenseApproval";
 import { calculateContractBalances } from "../shared/contractBalances";
 import { addAdditionalFee, calculateRateAdjustedTotal } from "../shared/contractFinance";
 import { isMileageAdvanceValid } from "../shared/vehicleMaintenance";
@@ -557,6 +558,15 @@ export async function deleteOfficeLiabilitySafely(input: { id: number; reason: s
   await db.insert(deletionAudits).values({ entityType: "liability", entityId: input.id, snapshot: JSON.stringify(item), reason: input.reason.trim(), deletedBy: input.deletedBy }); await db.delete(officeLiabilities).where(eq(officeLiabilities.id, input.id)); return { success: true as const };
 }
 
+export async function approveOfficeLiability(input: { id: number; status: "approved" | "rejected"; approvedBy: number; reason?: string }) {
+  const db = await getDb(); if (!db) throw new Error("Database unavailable");
+  const rows = await db.select().from(officeLiabilities).where(eq(officeLiabilities.id, input.id)).limit(1);
+  if (!rows[0]) throw new Error("الالتزام غير موجود");
+  if (input.status === "rejected" && !input.reason?.trim()) throw new Error("سبب رفض المصروف مطلوب");
+  await db.update(officeLiabilities).set({ approvalStatus: input.status, approvedBy: input.approvedBy, approvedAt: new Date(), notes: input.reason?.trim() ? `${rows[0].notes ?? ""}${rows[0].notes ? "؛ " : ""}سبب القرار: ${input.reason.trim()}` : rows[0].notes }).where(eq(officeLiabilities.id, input.id));
+  return { success: true as const, status: input.status };
+}
+
 export async function recordOfficeLiabilityPayment(id: number, amount: string, paymentMethod: "cash" | "network" | "transfer") {
   const db = await getDb(); if (!db) throw new Error("Database unavailable");
   const rows = await db.select().from(officeLiabilities).where(eq(officeLiabilities.id, id)).limit(1);
@@ -569,9 +579,10 @@ export async function recordOfficeLiabilityPayment(id: number, amount: string, p
 
 export async function getOfficeLiabilitySummary() {
   const rows = await listOfficeLiabilities();
-  const total = rows.reduce((sum, row) => sum + Number(row.amount), 0);
-  const paid = rows.reduce((sum, row) => sum + Number(row.paidAmount), 0);
-  return { total: total.toFixed(2), paid: paid.toFixed(2), outstanding: Math.max(0, total - paid).toFixed(2), count: rows.length };
+  const approvedRows = rows.filter((row) => row.approvalStatus === "approved");
+  const total = approvedRows.reduce((sum, row) => sum + Number(row.amount), 0);
+  const paid = approvedRows.reduce((sum, row) => sum + Number(row.paidAmount), 0);
+  return { total: total.toFixed(2), paid: paid.toFixed(2), outstanding: Math.max(0, total - paid).toFixed(2), count: rows.length, pendingCount: rows.filter((row) => row.approvalStatus === "pending").length };
 }
 
 export async function getVehicleRevenueReport(filters: { from?: string; to?: string } = {}) {
@@ -580,7 +591,7 @@ export async function getVehicleRevenueReport(filters: { from?: string; to?: str
   const paymentDateFilter = filters.from || filters.to ? and(filters.from ? gte(payments.createdAt, new Date(filters.from)) : undefined, filters.to ? lte(payments.createdAt, new Date(`${filters.to}T23:59:59`)) : undefined) : undefined;
   const contractsRows = await db.select({ contract: contracts, vehicle: vehicles }).from(contracts).leftJoin(vehicles, eq(contracts.vehicleId, vehicles.id)).where(contractDateFilter);
   const expenseDateFilter = filters.from || filters.to ? and(filters.from ? sql`COALESCE(${officeLiabilities.expenseDate}, ${officeLiabilities.createdAt}) >= ${new Date(filters.from)}` : undefined, filters.to ? sql`COALESCE(${officeLiabilities.expenseDate}, ${officeLiabilities.createdAt}) <= ${new Date(`${filters.to}T23:59:59`)}` : undefined) : undefined;
-  const expenseRows = await db.select({ amount: officeLiabilities.amount }).from(officeLiabilities).where(expenseDateFilter);
+  const expenseRows = await db.select({ amount: officeLiabilities.amount }).from(officeLiabilities).where(and(expenseDateFilter, eq(officeLiabilities.approvalStatus, "approved")));
   const paymentsRows = await db.select({ payment: payments, contract: contracts, vehicle: vehicles }).from(payments).innerJoin(contracts, eq(payments.contractId, contracts.id)).leftJoin(vehicles, eq(contracts.vehicleId, vehicles.id)).where(paymentDateFilter);
   const paymentPresenceRows = await db.select({ contractId: payments.contractId }).from(payments);
   const contractsWithPayments = new Set(paymentPresenceRows.map((row) => row.contractId));
