@@ -75,7 +75,7 @@ export default function OperationsPage() {
     const paymentStatus = Number(contract.paidAmount) >= Number(totals.grandTotal) ? "مدفوع" : "معلق";
     const vehicleDetails = item.vehicle ? `اللوحة: ${item.vehicle.plateNumber}\nالموديل: ${item.vehicle.make} ${item.vehicle.model}` : "—";
     const customerDetails = item.customer ? `الاسم: ${item.customer.fullName}\nالجوال: ${item.customer.phone}` : "—";
-    const rentalDetails = `من: ${new Date(contract.startDate).toLocaleDateString("ar-SA")}\nإلى: ${new Date(contract.expectedReturnDate).toLocaleDateString("ar-SA")}\n${daysStatus}`;
+    const rentalDetails = `من: ${new Date(contract.startDate).toLocaleDateString("ar-SA")}\nإلى: ${new Date(contract.expectedReturnDate).toLocaleDateString("ar-SA")}\n${daysStatus}${contract.status === "suspended" && contract.suspensionFollowUpDate ? `\nموعد المتابعة: ${new Date(contract.suspensionFollowUpDate).toLocaleDateString("ar-SA")}` : ""}`;
     const cells = [contract.contractNumber, contract.type === "daily" ? "يومي" : "شهري", vehicleDetails, customerDetails, rentalDetails, `${totals.baseTotal} ر.س`, `${totals.delayTotal} ر.س`, `${item.grandOutstanding} ر.س`, `${item.previousOutstanding} ر.س`, `${item.currentOutstanding} ر.س`, paymentStatus, "فتح"];
     return { id: contract.id, cells };
   }) ?? [];

@@ -76,6 +76,7 @@ export const contracts = mysqlTable("contracts", {
   totalAmount: decimal("totalAmount", { precision: 10, scale: 2 }).notNull(),
   paidAmount: decimal("paidAmount", { precision: 10, scale: 2 }).default("0").notNull(),
   notes: text("notes"),
+  suspensionFollowUpDate: date("suspensionFollowUpDate"),
   createdBy: int("createdBy"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

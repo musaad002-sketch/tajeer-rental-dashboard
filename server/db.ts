@@ -266,7 +266,7 @@ export async function listCustomers() {
   return db.select().from(customers).orderBy(desc(customers.createdAt));
 }
 
-export async function recordContractOperation(input: { contractId?: number; contractNumber?: string; operation: "new_contract" | "extension" | "payment" | "additional_fee" | "rate_update" | "vehicle_swap" | "suspend" | "close" | "return"; vehicleId?: number; vehicleMileage?: number; amount?: string; paymentMethod?: "cash" | "network" | "transfer" | "mixed"; paymentCashAmount?: string; paymentNetworkAmount?: string; extensionDays?: number; paymentReason?: string; details?: string; createdBy?: number }) {
+export async function recordContractOperation(input: { contractId?: number; contractNumber?: string; operation: "new_contract" | "extension" | "payment" | "additional_fee" | "rate_update" | "vehicle_swap" | "suspend" | "close" | "return"; vehicleId?: number; vehicleMileage?: number; amount?: string; paymentMethod?: "cash" | "network" | "transfer" | "mixed"; paymentCashAmount?: string; paymentNetworkAmount?: string; extensionDays?: number; followUpDate?: string; paymentReason?: string; details?: string; createdBy?: number }) {
   const db = await getDb(); if (!db) throw new Error("Database unavailable");
   const reference = getContractReference(input);
   const lookup = reference?.kind === "contractNumber" ? eq(contracts.contractNumber, reference.value) : reference?.kind === "contractId" ? eq(contracts.id, reference.value) : undefined;
@@ -286,7 +286,8 @@ export async function recordContractOperation(input: { contractId?: number; cont
   let suspensionSettlement: ReturnType<typeof calculateSuspensionSettlement> | undefined;
   if (input.operation === "suspend") {
     suspensionSettlement = calculateSuspensionSettlement({ baseTotal: contract.totalAmount, expectedReturnDate: contract.expectedReturnDate, suspendedAt: operationAt, rentalAmount: contract.rentalAmount, type: contract.type, paidAmount: contract.paidAmount });
-    operationDetails = `تسوية التعليق حتى ${operationAt.toLocaleDateString("en-CA")}: خصم الأيام غير المستخدمة ${suspensionSettlement.remainingDays} يوم بقيمة ${suspensionSettlement.unusedValue} ر.س؛ المستحق حتى التعليق ${suspensionSettlement.amountDueThroughSuspension} ر.س؛ المتبقي السابق ${suspensionSettlement.balances.previousOutstanding} ر.س؛ المتبقي الحالي ${suspensionSettlement.balances.currentOutstanding} ر.س${input.details ? `؛ ${input.details}` : ""}`;
+    if (!input.followUpDate) throw new Error("حدد التاريخ المتوقع للسداد أو إعادة التواصل");
+    operationDetails = `تسوية التعليق حتى ${operationAt.toLocaleDateString("en-CA")}: خصم الأيام غير المستخدمة ${suspensionSettlement.remainingDays} يوم بقيمة ${suspensionSettlement.unusedValue} ر.س؛ المستحق حتى التعليق ${suspensionSettlement.amountDueThroughSuspension} ر.س؛ المتبقي السابق ${suspensionSettlement.balances.previousOutstanding} ر.س؛ المتبقي الحالي ${suspensionSettlement.balances.currentOutstanding} ر.س؛ موعد المتابعة ${input.followUpDate}${input.details ? `؛ ${input.details}` : ""}`;
   }
   const otherRevenuePayment = input.operation === "payment" && isOtherRevenueReason(input.paymentReason);
   if (input.operation === "payment" && input.amount) {
@@ -299,7 +300,7 @@ export async function recordContractOperation(input: { contractId?: number; cont
     operationDetails = [operationDetails, reasonLabel ? `سبب الدفعة: ${reasonLabel}` : undefined, allocationNote, input.paymentMethod === "mixed" ? `دفع مختلط: كاش ${Number(input.paymentCashAmount).toFixed(2)} ر.س؛ شبكة ${Number(input.paymentNetworkAmount).toFixed(2)} ر.س` : undefined].filter(Boolean).join("؛ ");
     if (!otherRevenuePayment) {
       statusAfterPayment = statusAfterSuspendedSettlement({ status: contract.status, outstanding: Math.max(0, Number(balances.grandOutstanding) - Number(input.amount)), expectedReturnDate: contract.expectedReturnDate, now: operationAt });
-      if (statusAfterPayment) operationDetails = `${operationDetails}؛ تمت تسوية الرصيد وإعادة العقد إلى حالة ${statusAfterPayment === "active" ? "ساري" : "متأخر"}`;
+      if (statusAfterPayment) { operationDetails = `${operationDetails}؛ تمت تسوية الرصيد وإعادة العقد إلى حالة ${statusAfterPayment === "active" ? "ساري" : "متأخر"}`; await db.update(contracts).set({ status: statusAfterPayment, suspensionFollowUpDate: null }).where(eq(contracts.id, contractId)); }
     }
   }
   if (input.vehicleMileage !== undefined) {
@@ -387,7 +388,7 @@ export async function recordContractOperation(input: { contractId?: number; cont
     await db.update(vehicles).set({ status: "rented" }).where(eq(vehicles.id, input.vehicleId!));
     await db.update(contracts).set({ vehicleId: input.vehicleId }).where(eq(contracts.id, contractId));
   }
-  if (input.operation === "suspend" && suspensionSettlement) await db.update(contracts).set({ totalAmount: suspensionSettlement.adjustedBase }).where(eq(contracts.id, contractId));
+  if (input.operation === "suspend" && suspensionSettlement) await db.update(contracts).set({ totalAmount: suspensionSettlement.adjustedBase, suspensionFollowUpDate: new Date(`${input.followUpDate}T00:00:00.000Z`) }).where(eq(contracts.id, contractId));
   if (input.operation === "return" && returnSettlement) {
     const adjustedTotal = Math.max(0, Number(contract.totalAmount) - Number(returnSettlement.remainingValue));
     await db.update(contracts).set({ totalAmount: adjustedTotal.toFixed(2), status: "returned", actualReturnDate: operationAt }).where(eq(contracts.id, contractId));
