@@ -13,7 +13,7 @@ import { eq } from "drizzle-orm";
 import { formatReceiptData, generateContractPdf, generateReceiptPdf } from "../pdf";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
-import { scheduledDailyBackup } from "../scheduledBackup";
+import { scheduledDailyBackup, scheduledDailyBackupMarkSent } from "../scheduledBackup";
 
 export function registerReceiptPdfRoute(app: express.Express) {
   app.get("/api/pdf/receipt/:paymentId", async (req, res) => {
@@ -83,6 +83,7 @@ export async function startServer() {
 
   // Platform-managed daily backup callback. Must remain before Vite/static fallthrough.
   app.post("/api/scheduled/daily-backup", scheduledDailyBackup);
+  app.post("/api/scheduled/daily-backup-sent", scheduledDailyBackupMarkSent);
 
   // tRPC API
   app.use(

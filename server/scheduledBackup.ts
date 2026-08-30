@@ -126,6 +126,24 @@ export async function scheduledDailyBackup(req: Request, res: Response) {
   }
 }
 
+export async function scheduledDailyBackupMarkSent(req: Request, res: Response) {
+  try {
+    const user = await sdk.authenticateRequest(req);
+    if (!user?.isCron || !user.taskUid) return res.status(403).json({ error: "cron-only" });
+    const db = await getDb();
+    if (!db) throw new Error("Database unavailable");
+    const runKey = `${user.taskUid}:${getBackupDayKey(new Date())}`;
+    const existing = await db.select().from(backupRuns).where(eq(backupRuns.runKey, runKey)).limit(1);
+    if (!existing[0]) return res.status(404).json({ error: "backup-run-not-found" });
+    if (existing[0].sentAt) return res.json({ ok: true, skipped: "already-sent", runKey, sentAt: existing[0].sentAt });
+    await db.update(backupRuns).set({ sentAt: new Date() }).where(eq(backupRuns.runKey, runKey));
+    return res.json({ ok: true, runKey, sentAt: new Date().toISOString() });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return res.status(500).json({ error: message, timestamp: new Date().toISOString(), context: { url: req.originalUrl } });
+  }
+}
+
 export function buildBackupEmailBody(result: { generatedAt: string; files: { backup: string; dailyReport: string; monthlyReport: string } }) {
   return `نسخة تأجيرك اليومية جاهزة. تاريخ الإنشاء: ${result.generatedAt}. تم إنشاء نسخة SQL وتقرير يومي وتقرير شهري تراكمي. استخدم الروابط المرفقة الناتجة من نقطة النسخ لإرسال الملفات إلى المدير.`;
 }
