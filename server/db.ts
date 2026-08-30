@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { and, desc, eq, gte, inArray, like, lte, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, contractOperations, contracts, customers, deletionAudits, maintenanceRecords, officeLiabilities, payments, users, vehicles } from "../drizzle/schema";
+import { InsertUser, contractOperations, contracts, customers, deletionAudits, employees, expenseTypes, maintenanceRecords, officeLiabilities, payments, users, vehicles } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { buildOperationEffects, getContractReference, validateVehicleSwap } from "../shared/contractOperations";
 import { nextContractNumber as computeNextContractNumber } from "../shared/contractNumbers";
@@ -518,17 +518,36 @@ export async function listOfficeLiabilities() {
   return db.select().from(officeLiabilities).orderBy(desc(officeLiabilities.createdAt));
 }
 
-export async function createOfficeLiability(input: { category: string; description: string; amount: string; dueDate?: string; notes?: string; expenseReason?: string; contractNumber?: string; createdBy?: number }) {
+export async function listExpenseTypes() {
+  const db = await getDb(); if (!db) return [];
+  return db.select().from(expenseTypes).where(eq(expenseTypes.isActive, true)).orderBy(expenseTypes.name);
+}
+export async function createExpenseType(input: { name: string; recurrence: "one_time" | "monthly" | "quarterly" | "semiannual" | "annual"; defaultAmount?: string }) {
+  const db = await getDb(); if (!db) throw new Error("Database unavailable");
+  if (!input.name.trim()) throw new Error("اسم نوع المصروف مطلوب");
+  return db.insert(expenseTypes).values({ name: input.name.trim(), recurrence: input.recurrence, defaultAmount: input.defaultAmount || "0" });
+}
+export async function listEmployees() {
+  const db = await getDb(); if (!db) return [];
+  return db.select().from(employees).where(eq(employees.isActive, true)).orderBy(employees.fullName);
+}
+export async function createEmployee(input: { fullName: string; salary: string; hireDate: string }) {
+  const db = await getDb(); if (!db) throw new Error("Database unavailable");
+  if (!input.fullName.trim() || Number(input.salary) < 0 || !input.hireDate) throw new Error("بيانات الموظف غير صحيحة");
+  return db.insert(employees).values({ fullName: input.fullName.trim(), salary: input.salary, hireDate: new Date(input.hireDate) });
+}
+
+export async function createOfficeLiability(input: { category: string; description: string; amount: string; dueDate?: string; expenseDate?: string; expenseTypeId?: number; employeeId?: number; notes?: string; expenseReason?: string; contractNumber?: string; createdBy?: number }) {
   const db = await getDb(); if (!db) throw new Error("Database unavailable");
   if (!input.description.trim() || !input.amount.trim() || Number(input.amount) <= 0) throw new Error("بيانات المصروف غير صحيحة");
   if (input.contractNumber && !input.expenseReason?.trim()) throw new Error("سبب تحويل الدائن مطلوب عند ربط المصروف بعقد");
-  return db.insert(officeLiabilities).values({ ...input, dueDate: input.dueDate ? new Date(input.dueDate) : null, expenseReason: input.expenseReason?.trim() || null, contractNumber: input.contractNumber?.trim() || null, createdBy: input.createdBy });
+  return db.insert(officeLiabilities).values({ ...input, dueDate: input.dueDate ? new Date(input.dueDate) : null, expenseDate: input.expenseDate ? new Date(input.expenseDate) : null, expenseTypeId: input.expenseTypeId || null, employeeId: input.employeeId || null, expenseReason: input.expenseReason?.trim() || null, contractNumber: input.contractNumber?.trim() || null, createdBy: input.createdBy });
 }
 
-export async function updateOfficeLiability(input: { id: number; category?: string; description?: string; amount?: string; dueDate?: string | null; notes?: string | null; reason: string; updatedBy?: number }) {
+export async function updateOfficeLiability(input: { id: number; category?: string; description?: string; amount?: string; dueDate?: string | null; expenseDate?: string | null; notes?: string | null; reason: string; updatedBy?: number }) {
   const db = await getDb(); if (!db) throw new Error("Database unavailable"); if (!input.reason.trim()) throw new Error("سبب تعديل الالتزام مطلوب");
   const existing = await db.select().from(officeLiabilities).where(eq(officeLiabilities.id, input.id)).limit(1); const item = existing[0]; if (!item) throw new Error("الالتزام غير موجود");
-  const values: Record<string, unknown> = {}; for (const key of ["category", "description", "amount", "notes"] as const) if (input[key] !== undefined) values[key] = input[key]; if (input.dueDate !== undefined) values.dueDate = input.dueDate ? new Date(input.dueDate) : null;
+  const values: Record<string, unknown> = {}; for (const key of ["category", "description", "amount", "notes"] as const) if (input[key] !== undefined) values[key] = input[key]; if (input.dueDate !== undefined) values.dueDate = input.dueDate ? new Date(input.dueDate) : null; if (input.expenseDate !== undefined) values.expenseDate = input.expenseDate ? new Date(input.expenseDate) : null;
   await db.update(officeLiabilities).set(values).where(eq(officeLiabilities.id, input.id)); await db.insert(deletionAudits).values({ entityType: "liability_edit", entityId: input.id, snapshot: JSON.stringify({ before: item, after: values }), reason: input.reason.trim(), deletedBy: input.updatedBy }); return { success: true as const };
 }
 

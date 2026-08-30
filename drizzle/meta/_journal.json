@@ -113,6 +113,20 @@
       "when": 1788048237297,
       "tag": "0015_workable_boom_boom",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "5",
+      "when": 1788050203322,
+      "tag": "0016_far_sharon_carter",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "5",
+      "when": 1788050359247,
+      "tag": "0017_free_vanisher",
+      "breakpoints": true
     }
   ]
 }

@@ -126,6 +126,25 @@ export const deletionAudits = mysqlTable("deletionAudits", {
   deletedAt: timestamp("deletedAt").defaultNow().notNull(),
 }, (table) => ({ contractIdx: index("deletion_audits_contract_idx").on(table.contractId) }));
 
+export const expenseTypes = mysqlTable("expenseTypes", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 120 }).notNull().unique(),
+  recurrence: mysqlEnum("recurrence", ["one_time", "monthly", "quarterly", "semiannual", "annual"]).default("one_time").notNull(),
+  defaultAmount: decimal("defaultAmount", { precision: 10, scale: 2 }).default("0").notNull(),
+  isActive: boolean("isActive").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export const employees = mysqlTable("employees", {
+  id: int("id").autoincrement().primaryKey(),
+  fullName: varchar("fullName", { length: 160 }).notNull(),
+  salary: decimal("salary", { precision: 10, scale: 2 }).notNull(),
+  hireDate: date("hireDate").notNull(),
+  isActive: boolean("isActive").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
 export const officeLiabilities = mysqlTable("officeLiabilities", {
   id: int("id").autoincrement().primaryKey(),
   category: varchar("category", { length: 100 }).notNull(),
@@ -133,6 +152,9 @@ export const officeLiabilities = mysqlTable("officeLiabilities", {
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
   paidAmount: decimal("paidAmount", { precision: 10, scale: 2 }).default("0").notNull(),
   dueDate: date("dueDate"),
+  expenseDate: date("expenseDate"),
+  expenseTypeId: int("expenseTypeId"),
+  employeeId: int("employeeId"),
   status: liabilityStatus.default("open").notNull(),
   notes: text("notes"),
   expenseReason: varchar("expenseReason", { length: 240 }),
@@ -152,3 +174,5 @@ export type ContractOperation = typeof contractOperations.$inferSelect;
 export type Payment = typeof payments.$inferSelect;
 export type MaintenanceRecord = typeof maintenanceRecords.$inferSelect;
 export type OfficeLiability = typeof officeLiabilities.$inferSelect;
+export type ExpenseType = typeof expenseTypes.$inferSelect;
+export type Employee = typeof employees.$inferSelect;

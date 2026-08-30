@@ -6,7 +6,8 @@ import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { isValidVehicleModelYear } from "../shared/vehicleRules";
 import { permissionKeys } from "../shared/permissions";
-import { createCustomer, updateCustomer, deleteCustomerSafely, createMaintenance, updateMaintenance, deleteMaintenanceSafely, createOfficeLiability, updateOfficeLiability, deleteOfficeLiabilitySafely, createContract, deleteContractSafely, deleteOperationSafely, deletePaymentSafely, deleteVehicle, getAccountingSummary, listPayments, listReturns, getDashboardAlerts, getDashboardSummary, getFleetReport, getOfficeLiabilitySummary, getContractDetails, getCustomerDetails, getVehicleDetails, getVehicleRevenueReport, listAvailableVehicles, listContracts, listContractOperations, listAllContractOperations, listCustomers, listMaintenance, listOfficeLiabilities, listVehicles, recordContractOperation, recordOfficeLiabilityPayment, searchCustomerLedger, updateMaintenanceStatus, createVehicle, updateVehicle, updateContractRetroactively, updatePaymentRetroactively, upsertUser, getUserByUsername, listManagedUsers, createManagedUser, updateManagedUser, hashLocalPassword } from "./db";
+import { createCustomer, updateCustomer, deleteCustomerSafely, createMaintenance, updateMaintenance, deleteMaintenanceSafely, createOfficeLiability, updateOfficeLiability, deleteOfficeLiabilitySafely, createContract, deleteContractSafely, deleteOperationSafely, deletePaymentSafely, deleteVehicle, getAccountingSummary, listPayments, listReturns, getDashboardAlerts, getDashboardSummary, getFleetReport,   getOfficeLiabilitySummary,
+  listExpenseTypes, createExpenseType, listEmployees, createEmployee, getContractDetails, getCustomerDetails, getVehicleDetails, getVehicleRevenueReport, listAvailableVehicles, listContracts, listContractOperations, listAllContractOperations, listCustomers, listMaintenance, listOfficeLiabilities, listVehicles, recordContractOperation, recordOfficeLiabilityPayment, searchCustomerLedger, updateMaintenanceStatus, createVehicle, updateVehicle, updateContractRetroactively, updatePaymentRetroactively, upsertUser, getUserByUsername, listManagedUsers, createManagedUser, updateManagedUser, hashLocalPassword } from "./db";
 
 export const appRouter = router({
   system: systemRouter,
@@ -37,11 +38,19 @@ export const appRouter = router({
   dashboard: protectedProcedure.query(() => getDashboardSummary()),
   alerts: protectedProcedure.query(() => getDashboardAlerts()),
   accounting: protectedProcedure.query(() => getAccountingSummary()),
+  expenseTypes: router({
+    list: protectedProcedure.query(() => listExpenseTypes()),
+    create: adminProcedure.input(z.object({ name: z.string().min(2), recurrence: z.enum(["one_time", "monthly", "quarterly", "semiannual", "annual"]), defaultAmount: z.string().optional() })).mutation(({ input }) => createExpenseType(input)),
+  }),
+  employees: router({
+    list: protectedProcedure.query(() => listEmployees()),
+    create: adminProcedure.input(z.object({ fullName: z.string().min(2), salary: z.string().min(1), hireDate: z.string().min(1) })).mutation(({ input }) => createEmployee(input)),
+  }),
   liabilities: router({
     list: protectedProcedure.query(() => listOfficeLiabilities()),
     summary: protectedProcedure.query(() => getOfficeLiabilitySummary()),
-    create: adminProcedure.input(z.object({ category: z.string().min(1), description: z.string().min(2), amount: z.string().min(1), dueDate: z.string().optional(), notes: z.string().optional(), expenseReason: z.string().optional(), contractNumber: z.string().optional() })).mutation(({ input, ctx }) => createOfficeLiability({ ...input, createdBy: ctx.user.id })),
-    update: adminProcedure.input(z.object({ id: z.number().int().positive(), category: z.string().min(1).optional(), description: z.string().min(2).optional(), amount: z.string().optional(), dueDate: z.string().nullable().optional(), notes: z.string().nullable().optional(), reason: z.string().trim().min(2) })).mutation(({ input, ctx }) => updateOfficeLiability({ ...input, updatedBy: ctx.user.id })),
+    create: adminProcedure.input(z.object({ category: z.string().min(1), description: z.string().min(2), amount: z.string().min(1), dueDate: z.string().optional(), expenseDate: z.string().optional(), expenseTypeId: z.number().int().positive().optional(), employeeId: z.number().int().positive().optional(), notes: z.string().optional(), expenseReason: z.string().optional(), contractNumber: z.string().optional() })).mutation(({ input, ctx }) => createOfficeLiability({ ...input, createdBy: ctx.user.id })),
+    update: adminProcedure.input(z.object({ id: z.number().int().positive(), category: z.string().min(1).optional(), description: z.string().min(2).optional(), amount: z.string().optional(), dueDate: z.string().nullable().optional(), expenseDate: z.string().nullable().optional(), notes: z.string().nullable().optional(), reason: z.string().trim().min(2) })).mutation(({ input, ctx }) => updateOfficeLiability({ ...input, updatedBy: ctx.user.id })),
     deleteSafely: adminProcedure.input(z.object({ id: z.number().int().positive(), reason: z.string().trim().min(2) })).mutation(({ input, ctx }) => deleteOfficeLiabilitySafely({ ...input, deletedBy: ctx.user.id })),
     pay: adminProcedure.input(z.object({ id: z.number().int().positive(), amount: z.string().min(1), paymentMethod: z.enum(["cash", "network", "transfer"]) })).mutation(({ input }) => recordOfficeLiabilityPayment(input.id, input.amount, input.paymentMethod)),
   }),
