@@ -482,19 +482,27 @@ export async function nextContractNumber() {
   return computeNextContractNumber(rows.map((row) => row.contractNumber));
 }
 
-export async function createContract(input: { contractNumber?: string; customerId: number; vehicleId: number; vehicleMileage?: number; type: "daily" | "monthly"; contractScope?: "domestic_limited" | "domestic_open" | "international"; startDate: string; expectedReturnDate: string; rentalAmount: string; days: number; totalAmount: string; paidAmount?: string; notes?: string; createdBy?: number }) {
+export async function createContract(input: { contractNumber?: string; customerId: number; vehicleId: number; vehicleMileage?: number; type: "daily" | "monthly"; contractScope?: "domestic_limited" | "domestic_open" | "international"; startDate: string; expectedReturnDate: string; rentalAmount: string; days: number; totalAmount: string; paidAmount?: string; initialCashAmount?: string; initialNetworkAmount?: string; notes?: string; createdBy?: number }) {
   const db = await getDb(); if (!db) throw new Error("Database unavailable");
   const available = await listAvailableVehicles();
   const selectedVehicle = available.find((vehicle) => vehicle.id === input.vehicleId);
   if (!selectedVehicle) throw new Error("السيارة غير متاحة للتأجير بسبب عقد أو صيانة مفتوحة");
   if (input.vehicleMileage !== undefined && !isMileageAdvanceValid(selectedVehicle.mileage, input.vehicleMileage)) throw new Error("قراءة العداد الجديدة لا يمكن أن تكون أقل من القراءة الحالية");
   const contractNumber = input.contractNumber?.trim() || await nextContractNumber();
-  const { vehicleMileage: _vehicleMileage, ...contractInput } = input;
+  const { vehicleMileage: _vehicleMileage, initialCashAmount: _initialCashAmount, initialNetworkAmount: _initialNetworkAmount, ...contractInput } = input;
   const result = await db.insert(contracts).values({ ...contractInput, contractNumber, startDate: new Date(input.startDate), expectedReturnDate: new Date(input.expectedReturnDate), paidAmount: input.paidAmount ?? "0", createdBy: input.createdBy ?? null });
   const contractId = Number(result[0]?.insertId);
   await db.update(vehicles).set({ status: "rented", ...(input.vehicleMileage !== undefined ? { mileage: input.vehicleMileage } : {}) }).where(eq(vehicles.id, input.vehicleId!));
   const contractNotes = `${input.notes?.trim() ?? ""}${input.vehicleMileage !== undefined ? `${input.notes?.trim() ? "؛ " : ""}قراءة العداد عند فتح العقد: ${input.vehicleMileage.toLocaleString()} كم` : ""}`.trim();
   await db.insert(contractOperations).values({ contractId, operation: "new_contract", vehicleId: input.vehicleId, details: contractNotes ? `إنشاء عقد ${input.type}؛ ملاحظات العقد: ${contractNotes}` : `إنشاء عقد ${input.type}`, createdBy: input.createdBy });
+  const initialCash = Number(input.initialCashAmount) || 0;
+  const initialNetwork = Number(input.initialNetworkAmount) || 0;
+  if (initialCash > 0 || initialNetwork > 0) {
+    const paymentDetails = `دفعة عند إنشاء العقد ${contractNumber}`;
+    if (initialCash > 0) await db.insert(payments).values({ contractId, customerId: input.customerId, amount: initialCash.toFixed(2), method: "cash", notes: paymentDetails });
+    if (initialNetwork > 0) await db.insert(payments).values({ contractId, customerId: input.customerId, amount: initialNetwork.toFixed(2), method: "network", notes: paymentDetails });
+    await db.insert(contractOperations).values({ contractId, operation: "payment", vehicleId: input.vehicleId, amount: (initialCash + initialNetwork).toFixed(2), paymentMethod: initialCash > 0 && initialNetwork > 0 ? "mixed" : initialCash > 0 ? "cash" : "network", details: paymentDetails, createdBy: input.createdBy });
+  }
   return { id: contractId, contractNumber };
 }
 
