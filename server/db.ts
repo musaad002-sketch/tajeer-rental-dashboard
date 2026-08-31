@@ -52,6 +52,7 @@ export async function getUserByOpenId(openId: string) {
 
 export function hashLocalPassword(password: string) { return createHash("sha256").update(password).digest("hex"); }
 export function hashEmailVerificationToken(token: string) { return createHash("sha256").update(token).digest("hex"); }
+export function isEmailVerificationTokenValid(expiresAt: Date | null | undefined, now = Date.now()) { return Boolean(expiresAt && expiresAt.getTime() > now); }
 
 export async function createEmailVerificationToken(userId: number) {
   const db = await getDb(); if (!db) throw new Error("قاعدة البيانات غير متاحة");
@@ -68,7 +69,7 @@ export async function verifyManagedUserEmail(token: string) {
   const db = await getDb(); if (!db) throw new Error("قاعدة البيانات غير متاحة");
   const hash = hashEmailVerificationToken(token);
   const user = (await db.select().from(users).where(eq(users.emailVerificationTokenHash, hash)).limit(1))[0];
-  if (!user || !user.isActive || !user.emailVerificationExpiresAt || user.emailVerificationExpiresAt.getTime() <= Date.now()) return null;
+  if (!user || !user.isActive || !isEmailVerificationTokenValid(user.emailVerificationExpiresAt)) return null;
   await db.update(users).set({ emailVerifiedAt: new Date(), emailVerificationTokenHash: null, emailVerificationExpiresAt: null }).where(eq(users.id, user.id));
   return { id: user.id, name: user.name, email: user.email };
 }
