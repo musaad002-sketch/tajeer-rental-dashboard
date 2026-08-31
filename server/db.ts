@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { and, desc, eq, gte, inArray, like, lte, or, sql } from "drizzle-orm";
+import { randomBytes } from "node:crypto";
 import { drizzle } from "drizzle-orm/mysql2";
 import { InsertUser, contractOperations, contracts, customers, deletionAudits, employees, expenseTypes, maintenanceRecords, officeLiabilities, payments, users, vehicles } from "../drizzle/schema";
 import { ENV } from "./_core/env";
@@ -50,10 +51,31 @@ export async function getUserByOpenId(openId: string) {
 }
 
 export function hashLocalPassword(password: string) { return createHash("sha256").update(password).digest("hex"); }
+export function hashEmailVerificationToken(token: string) { return createHash("sha256").update(token).digest("hex"); }
+
+export async function createEmailVerificationToken(userId: number) {
+  const db = await getDb(); if (!db) throw new Error("قاعدة البيانات غير متاحة");
+  const user = (await db.select({ id: users.id, email: users.email, isActive: users.isActive }).from(users).where(eq(users.id, userId)).limit(1))[0];
+  if (!user || !user.isActive) throw new Error("الحساب غير موجود أو غير نشط");
+  if (!user.email) throw new Error("أضف بريد المستخدم أولاً");
+  const token = randomBytes(32).toString("hex");
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  await db.update(users).set({ emailVerificationTokenHash: hashEmailVerificationToken(token), emailVerificationExpiresAt: expiresAt }).where(eq(users.id, userId));
+  return { token, expiresAt, email: user.email };
+}
+
+export async function verifyManagedUserEmail(token: string) {
+  const db = await getDb(); if (!db) throw new Error("قاعدة البيانات غير متاحة");
+  const hash = hashEmailVerificationToken(token);
+  const user = (await db.select().from(users).where(eq(users.emailVerificationTokenHash, hash)).limit(1))[0];
+  if (!user || !user.isActive || !user.emailVerificationExpiresAt || user.emailVerificationExpiresAt.getTime() <= Date.now()) return null;
+  await db.update(users).set({ emailVerifiedAt: new Date(), emailVerificationTokenHash: null, emailVerificationExpiresAt: null }).where(eq(users.id, user.id));
+  return { id: user.id, name: user.name, email: user.email };
+}
 
 export async function listManagedUsers() {
   const db = await getDb(); if (!db) return [];
-  return db.select({ id: users.id, openId: users.openId, name: users.name, email: users.email, username: users.username, role: users.role, isActive: users.isActive, permissions: users.permissions, createdAt: users.createdAt, lastSignedIn: users.lastSignedIn }).from(users).orderBy(desc(users.createdAt));
+  return db.select({ id: users.id, openId: users.openId, name: users.name, email: users.email, username: users.username, role: users.role, isActive: users.isActive, permissions: users.permissions, emailVerifiedAt: users.emailVerifiedAt, createdAt: users.createdAt, lastSignedIn: users.lastSignedIn }).from(users).orderBy(desc(users.createdAt));
 }
 
 export async function getUserByUsername(username: string) {
@@ -80,7 +102,7 @@ export async function updateManagedUser(input: { id: number; name?: string; emai
   if (input.isActive !== undefined) values.isActive = input.isActive;
   if (input.permissions !== undefined) values.permissions = JSON.stringify(input.permissions);
   if (Object.keys(values).length) await db.update(users).set(values).where(eq(users.id, input.id));
-  const result = await db.select({ id: users.id, openId: users.openId, name: users.name, email: users.email, username: users.username, role: users.role, isActive: users.isActive, permissions: users.permissions, createdAt: users.createdAt, lastSignedIn: users.lastSignedIn }).from(users).where(eq(users.id, input.id)).limit(1);
+  const result = await db.select({ id: users.id, openId: users.openId, name: users.name, email: users.email, username: users.username, role: users.role, isActive: users.isActive, permissions: users.permissions, emailVerifiedAt: users.emailVerifiedAt, createdAt: users.createdAt, lastSignedIn: users.lastSignedIn }).from(users).where(eq(users.id, input.id)).limit(1);
   return result[0];
 }
 

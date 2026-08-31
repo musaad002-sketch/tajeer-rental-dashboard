@@ -85,7 +85,7 @@ export default function VehicleDetailsPage() {
               </CardContent>
             </Card>
 
-            <VehicleEditor vehicle={row.vehicle} />
+            {user?.role === "admin" && <VehicleEditor vehicle={row.vehicle} />}
             {user?.role === "admin" && <VehicleDeleteAction vehicleId={row.vehicle.id} plateNumber={row.vehicle.plateNumber} onDeleted={() => setLocation("/vehicles")} />}
 
             {currentContract && (

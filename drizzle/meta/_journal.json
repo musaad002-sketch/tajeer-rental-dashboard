@@ -169,6 +169,13 @@
       "when": 1788060243471,
       "tag": "0023_plain_clint_barton",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "5",
+      "when": 1788217116866,
+      "tag": "0024_bent_hulk",
+      "breakpoints": true
     }
   ]
 }
