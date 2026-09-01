@@ -176,6 +176,13 @@
       "when": 1788217116866,
       "tag": "0024_bent_hulk",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "5",
+      "when": 1788286549247,
+      "tag": "0025_far_switch",
+      "breakpoints": true
     }
   ]
 }

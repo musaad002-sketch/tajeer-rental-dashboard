@@ -12,13 +12,14 @@ import CustomerDetailsPage from "./pages/CustomerDetailsPage";
 import ReportsPage from "./pages/ReportsPage";
 import UsersPage from "./pages/UsersPage";
 import VerifyEmailPage from "./pages/VerifyEmailPage";
+import ResetPasswordPage from "./pages/ResetPasswordPage";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
 
 function Router() {
-  return <Switch><Route path="/" component={Home} /><Route path="/contracts/new" component={NewContractPage} /><Route path="/contracts/history" component={ContractHistoryPage} /><Route path="/contracts/active" component={OperationsPage} /><Route path="/contracts/overdue" component={OperationsPage} /><Route path="/contracts/suspended" component={OperationsPage} /><Route path="/contracts/:id" component={ContractDetailsPage} /><Route path="/vehicles" component={OperationsPage} /><Route path="/vehicles/:id" component={VehicleDetailsPage} /><Route path="/customers" component={CustomersPage} /><Route path="/customers/:id" component={CustomerDetailsPage} /><Route path="/accounting" component={OperationsPage} /><Route path="/payments" component={ReferenceLedgerPage} /><Route path="/returns" component={ReferenceLedgerPage} /><Route path="/maintenance" component={OperationsPage} /><Route path="/reports" component={ReportsPage} /><Route path="/users" component={UsersPage} /><Route path="/verify-email" component={VerifyEmailPage} /><Route path="/404" component={NotFound} /><Route component={NotFound} /></Switch>;
+  return <Switch><Route path="/" component={Home} /><Route path="/contracts/new" component={NewContractPage} /><Route path="/contracts/history" component={ContractHistoryPage} /><Route path="/contracts/active" component={OperationsPage} /><Route path="/contracts/overdue" component={OperationsPage} /><Route path="/contracts/suspended" component={OperationsPage} /><Route path="/contracts/:id" component={ContractDetailsPage} /><Route path="/vehicles" component={OperationsPage} /><Route path="/vehicles/:id" component={VehicleDetailsPage} /><Route path="/customers" component={CustomersPage} /><Route path="/customers/:id" component={CustomerDetailsPage} /><Route path="/accounting" component={OperationsPage} /><Route path="/payments" component={ReferenceLedgerPage} /><Route path="/returns" component={ReferenceLedgerPage} /><Route path="/maintenance" component={OperationsPage} /><Route path="/reports" component={ReportsPage} /><Route path="/users" component={UsersPage} /><Route path="/verify-email" component={VerifyEmailPage} /><Route path="/reset-password" component={ResetPasswordPage} /><Route path="/404" component={NotFound} /><Route component={NotFound} /></Switch>;
 }
 
 export default function App() {

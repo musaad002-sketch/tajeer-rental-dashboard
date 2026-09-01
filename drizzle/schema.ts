@@ -14,6 +14,8 @@ export const users = mysqlTable("users", {
   emailVerifiedAt: timestamp("emailVerifiedAt"),
   emailVerificationTokenHash: varchar("emailVerificationTokenHash", { length: 128 }),
   emailVerificationExpiresAt: timestamp("emailVerificationExpiresAt"),
+  passwordResetTokenHash: varchar("passwordResetTokenHash", { length: 128 }),
+  passwordResetExpiresAt: timestamp("passwordResetExpiresAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),

@@ -8,7 +8,7 @@ import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_
 import { isValidVehicleModelYear } from "../shared/vehicleRules";
 import { canAccess, isOperatorVisibleContractStatus, permissionKeys } from "../shared/permissions";
 import { createCustomer, updateCustomer, deleteCustomerSafely, createMaintenance, updateMaintenance, deleteMaintenanceSafely, createOfficeLiability, updateOfficeLiability, deleteOfficeLiabilitySafely, createContract, deleteContractSafely, deleteOperationSafely, deletePaymentSafely, deleteVehicle, getAccountingSummary, getOperationalAccountingSummary, listPayments, listReturns, getDashboardAlerts, getDashboardSummary, getFleetReport,   getOfficeLiabilitySummary, getOfficeInsights,
-  listExpenseTypes, createExpenseType, listEmployees, createEmployee, getContractDetails, getCustomerDetails, getVehicleDetails, getVehicleRevenueReport, listAvailableVehicles, listVehicles, listContracts, listContractOperations, listAllContractOperations, listCustomers, listMaintenance, listOfficeLiabilities, recordContractOperation, recordOfficeLiabilityPayment, approveOfficeLiability, searchCustomerLedger, updateMaintenanceStatus, createVehicle, updateVehicle, updateContractRetroactively, updatePaymentRetroactively, upsertUser, getUserByUsername, listManagedUsers, createManagedUser, updateManagedUser, hashLocalPassword, createEmailVerificationToken, verifyManagedUserEmail } from "./db";
+  listExpenseTypes, createExpenseType, listEmployees, createEmployee, getContractDetails, getCustomerDetails, getVehicleDetails, getVehicleRevenueReport, listAvailableVehicles, listVehicles, listContracts, listContractOperations, listAllContractOperations, listCustomers, listMaintenance, listOfficeLiabilities, recordContractOperation, recordOfficeLiabilityPayment, approveOfficeLiability, searchCustomerLedger, updateMaintenanceStatus, createVehicle, updateVehicle, updateContractRetroactively, updatePaymentRetroactively, upsertUser, getUserByUsername, listManagedUsers, createManagedUser, updateManagedUser, hashLocalPassword, createEmailVerificationToken, verifyManagedUserEmail, changeManagedUserPassword, createPasswordResetToken, resetManagedUserPassword } from "./db";
 
 export const appRouter = router({
   system: systemRouter,
@@ -38,12 +38,15 @@ export const appRouter = router({
       if (!user) throw new TRPCError({ code: "BAD_REQUEST", message: "رابط التحقق غير صالح أو منتهي" });
       return { success: true, user } as const;
     }),
+    changePassword: protectedProcedure.input(z.object({ currentPassword: z.string().min(1), newPassword: z.string().min(8) })).mutation(({ input, ctx }) => changeManagedUserPassword(ctx.user.id, input.currentPassword, input.newPassword)),
+    resetPassword: publicProcedure.input(z.object({ token: z.string().regex(/^[a-f0-9]{64}$/), newPassword: z.string().min(8) })).mutation(async ({ input }) => { const success = await resetManagedUserPassword(input.token, input.newPassword); if (!success) throw new TRPCError({ code: "BAD_REQUEST", message: "رابط الاستعادة غير صالح أو منتهي" }); return { success: true } as const; }),
   }),
   users: router({
     list: adminProcedure.query(() => listManagedUsers()),
     create: adminProcedure.input(z.object({ username: z.string().trim().min(3).max(64), password: z.string().min(6), name: z.string().trim().min(2), email: z.string().email().optional(), role: z.enum(["user", "admin"]), permissions: z.array(z.enum(permissionKeys)).default([]) })).mutation(({ input }) => createManagedUser(input)),
     update: adminProcedure.input(z.object({ id: z.number().int().positive(), name: z.string().trim().min(2).optional(), email: z.string().email().optional(), password: z.string().min(6).optional(), role: z.enum(["user", "admin"]).optional(), isActive: z.boolean().optional(), permissions: z.array(z.enum(permissionKeys)).optional() })).mutation(({ input }) => updateManagedUser(input)),
     createVerificationLink: adminProcedure.input(z.object({ id: z.number().int().positive(), origin: z.string().url() })).mutation(async ({ input }) => { const result = await createEmailVerificationToken(input.id); return { ...result, verificationUrl: `${input.origin.replace(/\/$/, "")}/verify-email?token=${result.token}` }; }),
+    createPasswordResetLink: adminProcedure.input(z.object({ id: z.number().int().positive(), origin: z.string().url() })).mutation(async ({ input }) => { const result = await createPasswordResetToken(input.id); return { ...result, resetUrl: `${input.origin.replace(/\/$/, "")}/reset-password?token=${result.token}` }; }),
   }),
   dashboard: protectedProcedure.query(() => getDashboardSummary()),
   alerts: protectedProcedure.query(() => getDashboardAlerts()),

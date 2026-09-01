@@ -74,6 +74,33 @@ export async function verifyManagedUserEmail(token: string) {
   return { id: user.id, name: user.name, email: user.email };
 }
 
+export async function changeManagedUserPassword(userId: number, currentPassword: string, newPassword: string) {
+  const db = await getDb(); if (!db) throw new Error("قاعدة البيانات غير متاحة");
+  const user = (await db.select({ id: users.id, passwordHash: users.passwordHash, isActive: users.isActive }).from(users).where(eq(users.id, userId)).limit(1))[0];
+  if (!user || !user.isActive || !user.passwordHash || user.passwordHash !== hashLocalPassword(currentPassword)) throw new Error("كلمة المرور الحالية غير صحيحة");
+  await db.update(users).set({ passwordHash: hashLocalPassword(newPassword), passwordResetTokenHash: null, passwordResetExpiresAt: null }).where(eq(users.id, userId));
+  return { success: true } as const;
+}
+
+export async function createPasswordResetToken(userId: number) {
+  const db = await getDb(); if (!db) throw new Error("قاعدة البيانات غير متاحة");
+  const user = (await db.select({ id: users.id, email: users.email, emailVerifiedAt: users.emailVerifiedAt, isActive: users.isActive }).from(users).where(eq(users.id, userId)).limit(1))[0];
+  if (!user || !user.isActive || !user.email || !user.emailVerifiedAt) throw new Error("يجب توثيق بريد الحساب أولاً");
+  const token = randomBytes(32).toString("hex");
+  const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+  await db.update(users).set({ passwordResetTokenHash: hashEmailVerificationToken(token), passwordResetExpiresAt: expiresAt }).where(eq(users.id, userId));
+  return { token, expiresAt, email: user.email };
+}
+
+export async function resetManagedUserPassword(token: string, newPassword: string) {
+  const db = await getDb(); if (!db) throw new Error("قاعدة البيانات غير متاحة");
+  const hash = hashEmailVerificationToken(token);
+  const user = (await db.select({ id: users.id, isActive: users.isActive, passwordResetExpiresAt: users.passwordResetExpiresAt }).from(users).where(eq(users.passwordResetTokenHash, hash)).limit(1))[0];
+  if (!user || !user.isActive || !isEmailVerificationTokenValid(user.passwordResetExpiresAt)) return false;
+  await db.update(users).set({ passwordHash: hashLocalPassword(newPassword), passwordResetTokenHash: null, passwordResetExpiresAt: null }).where(eq(users.id, user.id));
+  return true;
+}
+
 export async function listManagedUsers() {
   const db = await getDb(); if (!db) return [];
   return db.select({ id: users.id, openId: users.openId, name: users.name, email: users.email, username: users.username, role: users.role, isActive: users.isActive, permissions: users.permissions, emailVerifiedAt: users.emailVerifiedAt, createdAt: users.createdAt, lastSignedIn: users.lastSignedIn }).from(users).orderBy(desc(users.createdAt));
@@ -97,7 +124,7 @@ export async function updateManagedUser(input: { id: number; name?: string; emai
   const db = await getDb(); if (!db) throw new Error("قاعدة البيانات غير متاحة");
   const values: Record<string, unknown> = {};
   if (input.name !== undefined) values.name = input.name;
-  if (input.email !== undefined) values.email = input.email || null;
+  if (input.email !== undefined) { values.email = input.email || null; values.emailVerifiedAt = null; values.emailVerificationTokenHash = null; values.emailVerificationExpiresAt = null; }
   if (input.password) values.passwordHash = hashLocalPassword(input.password);
   if (input.role !== undefined) values.role = input.role;
   if (input.isActive !== undefined) values.isActive = input.isActive;
