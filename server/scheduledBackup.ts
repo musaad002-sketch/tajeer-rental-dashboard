@@ -145,7 +145,7 @@ export async function scheduledDailyBackupMarkSent(req: Request, res: Response) 
 }
 
 export function buildBackupEmailBody(result: { generatedAt: string; files: { backup: string; dailyReport: string; monthlyReport: string } }) {
-  return `نسخة تأجيرك اليومية جاهزة. تاريخ الإنشاء: ${result.generatedAt}. تم إنشاء نسخة SQL وتقرير يومي وتقرير شهري تراكمي. استخدم الروابط المرفقة الناتجة من نقطة النسخ لإرسال الملفات إلى المدير.`;
+  return `نسخة مكتب مشاري لتأجير السيارات اليومية جاهزة. تاريخ الإنشاء: ${result.generatedAt}. تم إنشاء نسخة SQL وتقرير يومي وتقرير شهري تراكمي. استخدم الروابط المرفقة الناتجة من نقطة النسخ لإرسال الملفات إلى المدير.`;
 }
 
 export function normalizeBackupPayload(payload: unknown) {

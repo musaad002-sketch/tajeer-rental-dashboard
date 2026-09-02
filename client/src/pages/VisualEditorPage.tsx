@@ -10,8 +10,8 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 const editableItems = [
-  { key: "brand.name", type: "text" as const, label: "اسم النظام", original: "تأجيرك" },
-  { key: "brand.description", type: "text" as const, label: "وصف النظام", original: "نظام إدارة التأجير والحسابات" },
+  { key: "brand.name", type: "text" as const, label: "اسم النظام", original: "مكتب مشاري لتأجير السيارات" },
+  { key: "brand.description", type: "text" as const, label: "وصف النظام", original: "نظام إدارة العقود والحسابات" },
   { key: "navigation.reports", type: "text" as const, label: "اسم التقارير", original: "التقارير" },
   { key: "navigation.vehicles", type: "text" as const, label: "اسم السيارات", original: "السيارات" },
   { key: "navigation.customers", type: "text" as const, label: "اسم العملاء", original: "العملاء" },
