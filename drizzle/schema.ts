@@ -193,6 +193,29 @@ export const officeLiabilities = mysqlTable("officeLiabilities", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
+export const blockedCustomers = mysqlTable("blockedCustomers", {
+  id: int("id").autoincrement().primaryKey(),
+  fullName: varchar("fullName", { length: 160 }).notNull(),
+  identityNumber: varchar("identityNumber", { length: 64 }),
+  phone: varchar("phone", { length: 32 }),
+  nationality: varchar("nationality", { length: 64 }),
+  reason: text("reason"),
+  source: varchar("source", { length: 160 }),
+  isActive: boolean("isActive").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({ identityIdx: index("blocked_customers_identity_idx").on(table.identityNumber), nameIdx: index("blocked_customers_name_idx").on(table.fullName) }));
+
+export const siteContent = mysqlTable("siteContent", {
+  id: int("id").autoincrement().primaryKey(),
+  contentKey: varchar("contentKey", { length: 160 }).notNull().unique(),
+  contentType: varchar("contentType", { length: 20 }).notNull(),
+  value: text("value").notNull(),
+  originalValue: text("originalValue").notNull(),
+  updatedBy: int("updatedBy"),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 export type Customer = typeof customers.$inferSelect;
@@ -205,3 +228,5 @@ export type OfficeLiability = typeof officeLiabilities.$inferSelect;
 export type BackupRun = typeof backupRuns.$inferSelect;
 export type ExpenseType = typeof expenseTypes.$inferSelect;
 export type Employee = typeof employees.$inferSelect;
+export type BlockedCustomer = typeof blockedCustomers.$inferSelect;
+export type SiteContent = typeof siteContent.$inferSelect;

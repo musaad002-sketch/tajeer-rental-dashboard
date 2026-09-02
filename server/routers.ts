@@ -8,7 +8,7 @@ import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_
 import { isValidVehicleModelYear } from "../shared/vehicleRules";
 import { canAccess, isOperatorVisibleContractStatus, permissionKeys } from "../shared/permissions";
 import { createCustomer, updateCustomer, deleteCustomerSafely, createMaintenance, updateMaintenance, deleteMaintenanceSafely, createOfficeLiability, updateOfficeLiability, deleteOfficeLiabilitySafely, createContract, deleteContractSafely, deleteOperationSafely, deletePaymentSafely, deleteVehicle, getAccountingSummary, getOperationalAccountingSummary, listPayments, listReturns, getDashboardAlerts, getDashboardSummary, getFleetReport,   getOfficeLiabilitySummary, getOfficeInsights,
-  listExpenseTypes, createExpenseType, listEmployees, createEmployee, getContractDetails, getCustomerDetails, getVehicleDetails, getVehicleRevenueReport, listAvailableVehicles, listVehicles, listContracts, listContractOperations, listAllContractOperations, listCustomers, listMaintenance, listOfficeLiabilities, recordContractOperation, recordOfficeLiabilityPayment, approveOfficeLiability, searchCustomerLedger, updateMaintenanceStatus, createVehicle, updateVehicle, updateContractRetroactively, updatePaymentRetroactively, upsertUser, getUserByUsername, listManagedUsers, createManagedUser, updateManagedUser, hashLocalPassword, createEmailVerificationToken, verifyManagedUserEmail, changeManagedUserPassword, createPasswordResetToken, resetManagedUserPassword } from "./db";
+  listExpenseTypes, createExpenseType, listEmployees, createEmployee, getContractDetails, getCustomerDetails, getVehicleDetails, getVehicleRevenueReport, listAvailableVehicles, listVehicles, listContracts, listContractOperations, listAllContractOperations, listCustomers, listMaintenance, listOfficeLiabilities, recordContractOperation, recordOfficeLiabilityPayment, approveOfficeLiability, searchCustomerLedger, updateMaintenanceStatus, createVehicle, updateVehicle, updateContractRetroactively, updatePaymentRetroactively, upsertUser, getUserByUsername, listManagedUsers, createManagedUser, updateManagedUser, hashLocalPassword, createEmailVerificationToken, verifyManagedUserEmail, changeManagedUserPassword, createPasswordResetToken, resetManagedUserPassword, listBlockedCustomers, listSiteContent, upsertSiteContent, resetSiteContent } from "./db";
 
 export const appRouter = router({
   system: systemRouter,
@@ -52,6 +52,14 @@ export const appRouter = router({
   alerts: protectedProcedure.query(() => getDashboardAlerts()),
   officeEye: adminProcedure.query(() => getOfficeInsights()),
   accounting: protectedProcedure.query(({ ctx }) => canAccess(ctx.user.role, ctx.user.permissions, "accounting") ? (ctx.user.role === "admin" ? getAccountingSummary() : getOperationalAccountingSummary()) : Promise.reject(new TRPCError({ code: "FORBIDDEN", message: "لا تملك صلاحية الحسابات" }))),
+  siteContent: router({
+    list: protectedProcedure.query(() => listSiteContent()),
+    save: adminProcedure.input(z.object({ contentKey: z.string().min(1).max(160), contentType: z.enum(["text", "link"]), value: z.string().max(4000), originalValue: z.string().max(4000) })).mutation(({ input, ctx }) => upsertSiteContent({ ...input, updatedBy: ctx.user.id })),
+    reset: adminProcedure.input(z.object({ contentKey: z.string().min(1).max(160) })).mutation(({ input }) => resetSiteContent(input.contentKey)),
+  }),
+  blockedCustomers: router({
+    list: protectedProcedure.query(() => listBlockedCustomers()),
+  }),
   expenseTypes: router({
     list: protectedProcedure.query(() => listExpenseTypes()),
     create: adminProcedure.input(z.object({ name: z.string().min(2), recurrence: z.enum(["one_time", "monthly", "quarterly", "semiannual", "annual"]), defaultAmount: z.string().optional() })).mutation(({ input }) => createExpenseType(input)),

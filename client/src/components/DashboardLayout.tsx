@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { trpc } from "@/lib/trpc";
 import { canAccess } from "@shared/permissions";
 import { toast } from "sonner";
-import { CarFront, ChevronLeft, ClipboardList, FileBarChart, FileCheck2, History, LayoutDashboard, LogOut, Menu, ShieldCheck, Users, WalletCards, Wrench, X } from "lucide-react";
+import { Ban, CarFront, ChevronLeft, ClipboardList, FileBarChart, FileCheck2, FilePenLine, History, LayoutDashboard, LogOut, Menu, ShieldCheck, Users, WalletCards, Wrench, X } from "lucide-react";
 import { useState } from "react";
 import { useLocation } from "wouter";
 import NotificationCenter from "./NotificationCenter";
@@ -21,12 +21,14 @@ const items = [
   { label: "سجل العمليات", icon: History, path: "/contracts/history", permission: "operations" },
   { label: "السيارات", icon: CarFront, path: "/vehicles", permission: "vehicles" },
   { label: "العملاء", icon: Users, path: "/customers", permission: "customers" },
+  { label: "العملاء المحظورون", icon: Ban, path: "/blocked-customers", permission: "user_management" },
   { label: "الحسابات والإيرادات", icon: WalletCards, path: "/accounting", permission: "accounting" },
   { label: "سجل المدفوعات", icon: WalletCards, path: "/payments", permission: "accounting" },
   { label: "سجل الاسترجاعات", icon: History, path: "/returns", permission: "operations" },
   { label: "الصيانة والتالف", icon: Wrench, path: "/maintenance", permission: "maintenance" },
   { label: "التقارير", icon: FileBarChart, path: "/reports", permission: "reports" },
   { label: "إدارة المستخدمين", icon: Users, path: "/users", permission: "user_management" },
+  { label: "تحرير الواجهة", icon: FilePenLine, path: "/editor", permission: "user_management" },
 ] as const;
 
 const focusClass = "focus-visible:ring-2 focus-visible:ring-[#16b4a5] focus-visible:ring-offset-2";

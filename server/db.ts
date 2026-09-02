@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { and, desc, eq, gte, inArray, like, lte, or, sql } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, contractOperations, contracts, customers, deletionAudits, employees, expenseTypes, maintenanceRecords, officeLiabilities, payments, users, vehicles } from "../drizzle/schema";
+import { InsertUser, blockedCustomers, contractOperations, contracts, customers, deletionAudits, employees, expenseTypes, maintenanceRecords, officeLiabilities, payments, siteContent, users, vehicles } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { buildOperationEffects, getContractReference, validateVehicleSwap } from "../shared/contractOperations";
 import { nextContractNumber as computeNextContractNumber } from "../shared/contractNumbers";
@@ -863,6 +863,45 @@ export async function deleteOperationSafely(input: { id: number; reason: string;
   await db.insert(deletionAudits).values({ entityType: "operation", entityId: operation.id, contractId: operation.contractId, snapshot: JSON.stringify(operation), reason: input.reason.trim(), deletedBy: input.deletedBy });
   await db.delete(contractOperations).where(eq(contractOperations.id, operation.id));
   return { success: true as const, contractId: operation.contractId };
+}
+
+export async function listSiteContent() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(siteContent).orderBy(siteContent.contentKey);
+}
+
+export async function upsertSiteContent(input: { contentKey: string; contentType: "text" | "link"; value: string; originalValue: string; updatedBy?: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("قاعدة البيانات غير متاحة");
+  const existing = await db.select().from(siteContent).where(eq(siteContent.contentKey, input.contentKey)).limit(1);
+  if (existing[0]) {
+    await db.update(siteContent).set({ value: input.value, contentType: input.contentType, updatedBy: input.updatedBy }).where(eq(siteContent.contentKey, input.contentKey));
+  } else {
+    await db.insert(siteContent).values(input);
+  }
+  return { success: true as const };
+}
+
+export async function resetSiteContent(contentKey: string) {
+  const db = await getDb();
+  if (!db) throw new Error("قاعدة البيانات غير متاحة");
+  const existing = await db.select().from(siteContent).where(eq(siteContent.contentKey, contentKey)).limit(1);
+  if (existing[0]) await db.update(siteContent).set({ value: existing[0].originalValue }).where(eq(siteContent.contentKey, contentKey));
+  return { success: true as const };
+}
+
+export async function listBlockedCustomers() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(blockedCustomers).where(eq(blockedCustomers.isActive, true)).orderBy(blockedCustomers.fullName);
+}
+
+export async function findBlockedCustomer(identityNumber: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(blockedCustomers).where(and(eq(blockedCustomers.isActive, true), eq(blockedCustomers.identityNumber, identityNumber))).limit(1);
+  return rows[0] ?? null;
 }
 
 export async function deleteContractSafely(input: { id: number; reason: string; deletedBy?: number }) {
