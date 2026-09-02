@@ -120,9 +120,15 @@ export async function createManagedUser(input: { username: string; password: str
   return getUserByUsername(input.username);
 }
 
-export async function updateManagedUser(input: { id: number; name?: string; email?: string; password?: string; role?: "user" | "admin"; isActive?: boolean; permissions?: string[] }) {
+export async function updateManagedUser(input: { id: number; username?: string; name?: string; email?: string; password?: string; role?: "user" | "admin"; isActive?: boolean; permissions?: string[] }) {
   const db = await getDb(); if (!db) throw new Error("قاعدة البيانات غير متاحة");
   const values: Record<string, unknown> = {};
+  if (input.username !== undefined) {
+    const username = input.username.trim();
+    const existing = await db.select({ id: users.id }).from(users).where(and(eq(users.username, username), sql`${users.id} <> ${input.id}`)).limit(1);
+    if (existing[0]) throw new Error("اسم المستخدم مستخدم مسبقاً");
+    values.username = username;
+  }
   if (input.name !== undefined) values.name = input.name;
   if (input.email !== undefined) { values.email = input.email || null; values.emailVerifiedAt = null; values.emailVerificationTokenHash = null; values.emailVerificationExpiresAt = null; }
   if (input.password) values.passwordHash = hashLocalPassword(input.password);
@@ -132,6 +138,19 @@ export async function updateManagedUser(input: { id: number; name?: string; emai
   if (Object.keys(values).length) await db.update(users).set(values).where(eq(users.id, input.id));
   const result = await db.select({ id: users.id, openId: users.openId, name: users.name, email: users.email, username: users.username, role: users.role, isActive: users.isActive, permissions: users.permissions, emailVerifiedAt: users.emailVerifiedAt, createdAt: users.createdAt, lastSignedIn: users.lastSignedIn }).from(users).where(eq(users.id, input.id)).limit(1);
   return result[0];
+}
+
+export async function deleteManagedUser(userId: number) {
+  const db = await getDb(); if (!db) throw new Error("قاعدة البيانات غير متاحة");
+  const user = await db.select({ id: users.id, openId: users.openId, role: users.role }).from(users).where(eq(users.id, userId)).limit(1);
+  if (!user[0]) throw new Error("الحساب غير موجود");
+  if (user[0].role === "admin" || user[0].openId === process.env.OWNER_OPEN_ID) throw new Error("لا يمكن حذف حساب المدير الرئيسي");
+  const references = await db.select({ count: sql<number>`count(*)` }).from(contractOperations).where(eq(contractOperations.createdBy, userId));
+  const liabilities = await db.select({ count: sql<number>`count(*)` }).from(officeLiabilities).where(or(eq(officeLiabilities.createdBy, userId), eq(officeLiabilities.approvedBy, userId)));
+  const edits = await db.select({ count: sql<number>`count(*)` }).from(siteContent).where(eq(siteContent.updatedBy, userId));
+  if (Number(references[0]?.count ?? 0) + Number(liabilities[0]?.count ?? 0) + Number(edits[0]?.count ?? 0) > 0) throw new Error("لا يمكن حذف حساب لديه سجلات تشغيلية؛ عطّله بدلاً من حذفه");
+  await db.delete(users).where(eq(users.id, userId));
+  return { success: true } as const;
 }
 
 export async function listContracts(status?: "active" | "overdue" | "suspended" | "closed" | "returned") {
