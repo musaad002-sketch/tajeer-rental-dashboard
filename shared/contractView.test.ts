@@ -10,5 +10,9 @@ describe("formatContractRows", () => {
     }]);
     expect(row).toMatchObject({ id: "#1031", customer: "عميل اختبار", car: "تويوتا كامري", status: "مغلق", tone: "amber" });
     expect(row?.due).toContain("175");
+    expect(row?.delayDays).toBeGreaterThanOrEqual(0);
+    expect(row?.previousOutstanding).toBeDefined();
+    expect(row?.currentOutstanding).toBeDefined();
+    expect(row?.grandOutstanding).toBeDefined();
   });
 });
