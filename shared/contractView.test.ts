@@ -9,6 +9,6 @@ describe("formatContractRows", () => {
       vehicle: { make: "تويوتا", model: "كامري" },
     }]);
     expect(row).toMatchObject({ id: "#1031", customer: "عميل اختبار", car: "تويوتا كامري", status: "مغلق", tone: "amber" });
-    expect(row?.due).toContain("١٧٥");
+    expect(row?.due).toContain("175");
   });
 });

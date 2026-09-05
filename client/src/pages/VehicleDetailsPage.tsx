@@ -1,3 +1,4 @@
+import { formatGregorianDate, formatGregorianDateTime } from "@shared/dateFormat";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Badge } from "@/components/ui/badge";
@@ -41,7 +42,7 @@ const operationLabels: Record<string, string> = {
 };
 
 function date(value: Date | string | null | undefined) {
-  return value ? new Date(value).toLocaleDateString("ar-SA") : "غير مسجل";
+  return value ? formatGregorianDate(value) : "غير مسجل";
 }
 
 export default function VehicleDetailsPage() {
@@ -158,7 +159,7 @@ export default function VehicleDetailsPage() {
                   <div className="space-y-2">{row.operations.map((operation) => (
                     <div key={operation.id} className="border-b border-slate-100 py-3 text-sm last:border-0">
                       <p className="font-bold text-slate-700">العقد #{operation.contractId} · {operationLabels[operation.operation] ?? operation.operation}</p>
-                      <p className="mt-1 text-xs text-slate-400">{new Date(operation.createdAt).toLocaleString("ar-SA")} · {operation.details ?? "بدون ملاحظات"}</p>
+                      <p className="mt-1 text-xs text-slate-400">{formatGregorianDateTime(operation.createdAt)} · {operation.details ?? "بدون ملاحظات"}</p>
                     </div>
                   ))}</div>
                 ) : <p className="py-6 text-sm text-slate-400">لا توجد عمليات مرتبطة بهذه السيارة.</p>}

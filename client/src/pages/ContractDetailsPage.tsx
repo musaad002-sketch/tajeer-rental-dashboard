@@ -1,3 +1,4 @@
+import { formatGregorianDate, formatGregorianDateTime } from "@shared/dateFormat";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,12 +17,12 @@ const paymentLabels: Record<string, string> = { cash: "نقدي", network: "شب
 
 function formatDate(value: Date | string | null | undefined) {
   if (!value) return "—";
-  return new Date(value).toLocaleDateString("ar-SA");
+  return formatGregorianDate(value);
 }
 
 function formatDateTime(value: Date | string | null | undefined) {
   if (!value) return "—";
-  return new Date(value).toLocaleString("ar-SA", { dateStyle: "medium", timeStyle: "short" });
+  return formatGregorianDateTime(value);
 }
 
 function statusClass(status: string) {

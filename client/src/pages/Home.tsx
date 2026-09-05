@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { formatContractRows } from "@shared/contractView";
 import { getOperatingCycle } from "@shared/rentalRules";
 import { canPerform } from "@shared/permissions";
+import { formatGregorianDate } from "@shared/dateFormat";
 import ContractOperationsPanel from "@/components/ContractOperationsPanel";
 import OperatorExpensePanel from "@/components/OperatorExpensePanel";
 import NewContractInline from "@/components/NewContractInline";
@@ -33,8 +34,8 @@ export default function Home() {
   const { data: liveContracts, isLoading: contractsLoading, isError: contractsError } = trpc.contracts.list.useQuery(undefined, { enabled: Boolean(user) });
   const cycleDate = useMemo(() => { const date = new Date(); date.setMonth(date.getMonth() + cycleOffset); return date; }, [cycleOffset]);
   const cycle = getOperatingCycle(cycleDate);
-  const cycleLabel = `${cycle.start.toLocaleDateString("ar-SA", { day: "numeric", month: "long" })} – ${cycle.end.toLocaleDateString("ar-SA", { day: "numeric", month: "long" })}`;
-  const cycleOptions = useMemo(() => [-3, -2, -1, 0, 1, 2, 3].map((offset) => { const date = new Date(); date.setMonth(date.getMonth() + offset); const item = getOperatingCycle(date); return { offset, label: `${item.start.toLocaleDateString("ar-SA", { day: "numeric", month: "long" })} – ${item.end.toLocaleDateString("ar-SA", { day: "numeric", month: "long" })}` }; }), []);
+  const cycleLabel = `${formatGregorianDate(cycle.start)} – ${formatGregorianDate(cycle.end)}`;
+  const cycleOptions = useMemo(() => [-3, -2, -1, 0, 1, 2, 3].map((offset) => { const date = new Date(); date.setMonth(date.getMonth() + offset); const item = getOperatingCycle(date); return { offset, label: `${formatGregorianDate(item.start)} – ${formatGregorianDate(item.end)}` }; }), []);
   const displayContracts = useMemo(() => formatContractRows(liveContracts ?? []), [liveContracts]);
   const currentContracts = useMemo(() => displayContracts.filter((contract) => contract.status === "ساري" || contract.status === "متأخر"), [displayContracts]);
   const filtered = useMemo(() => currentContracts.filter((contract) => `${contract.id} ${contract.customer} ${contract.car}`.toLowerCase().includes(query.trim().toLowerCase())), [currentContracts, query]);

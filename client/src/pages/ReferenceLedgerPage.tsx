@@ -1,3 +1,4 @@
+import { formatGregorianDate, formatGregorianDateTime } from "@shared/dateFormat";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -10,7 +11,7 @@ import { Link, useLocation } from "wouter";
 import { useAuth } from "@/_core/hooks/useAuth";
 
 function formatDate(value: Date | string | null | undefined) {
-  return value ? new Date(value).toLocaleString("ar-SA") : "—";
+  return value ? formatGregorianDateTime(value) : "—";
 }
 
 export default function ReferenceLedgerPage() {

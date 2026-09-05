@@ -1,3 +1,4 @@
+import { formatGregorianDate, formatGregorianDateTime } from "../shared/dateFormat";
 import { createHash } from "node:crypto";
 import { and, desc, eq, gte, inArray, like, lte, or, sql } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
@@ -358,7 +359,7 @@ export async function recordContractOperation(input: { contractId?: number; cont
   if (input.operation === "suspend") {
     suspensionSettlement = calculateSuspensionSettlement({ baseTotal: contract.totalAmount, expectedReturnDate: contract.expectedReturnDate, suspendedAt: operationAt, rentalAmount: contract.rentalAmount, type: contract.type, paidAmount: contract.paidAmount });
     if (!input.followUpDate) throw new Error("حدد التاريخ المتوقع للسداد أو إعادة التواصل");
-    operationDetails = `تسوية التعليق حتى ${operationAt.toLocaleDateString("en-CA")}: خصم الأيام غير المستخدمة ${suspensionSettlement.remainingDays} يوم بقيمة ${suspensionSettlement.unusedValue} ر.س؛ المستحق حتى التعليق ${suspensionSettlement.amountDueThroughSuspension} ر.س؛ المتبقي السابق ${suspensionSettlement.balances.previousOutstanding} ر.س؛ المتبقي الحالي ${suspensionSettlement.balances.currentOutstanding} ر.س؛ موعد المتابعة ${input.followUpDate}${input.details ? `؛ ${input.details}` : ""}`;
+    operationDetails = `تسوية التعليق حتى ${operationAt}: خصم الأيام غير المستخدمة ${suspensionSettlement.remainingDays} يوم بقيمة ${suspensionSettlement.unusedValue} ر.س؛ المستحق حتى التعليق ${suspensionSettlement.amountDueThroughSuspension} ر.س؛ المتبقي السابق ${suspensionSettlement.balances.previousOutstanding} ر.س؛ المتبقي الحالي ${suspensionSettlement.balances.currentOutstanding} ر.س؛ موعد المتابعة ${input.followUpDate}${input.details ? `؛ ${input.details}` : ""}`;
   }
   const otherRevenuePayment = input.operation === "payment" && isOtherRevenueReason(input.paymentReason);
   if (input.operation === "payment" && input.amount) {
@@ -418,7 +419,7 @@ export async function recordContractOperation(input: { contractId?: number; cont
   let closeSettlement: ReturnType<typeof calculateCloseSettlement> | undefined;
   if (input.operation === "close") {
     closeSettlement = calculateCloseSettlement({ baseTotal: contract.totalAmount, expectedReturnDate: contract.expectedReturnDate, closedAt: operationAt, rentalAmount: contract.rentalAmount, type: contract.type, paidAmount: contract.paidAmount });
-    operationDetails = `تسوية الإغلاق حتى ${operationAt.toLocaleDateString("en-CA")}: المستحق حتى يوم الإغلاق ${closeSettlement.amountDueThroughClose} ر.س؛ الأيام غير المستخدمة ${closeSettlement.remainingDays} يوم بقيمة ${closeSettlement.unusedValue} ر.س؛ الرصيد السابق ${closeSettlement.balances.previousOutstanding} ر.س؛ الرصيد الحالي ${closeSettlement.balances.currentOutstanding} ر.س${closeSettlement.shouldRecordReturn ? `؛ رصيد دائن للعميل ${closeSettlement.customerCredit} ر.س؛ رُحّلت السيارة إلى سجل الاسترجاعات` : ""}${input.details ? `؛ ${input.details}` : ""}`;
+    operationDetails = `تسوية الإغلاق حتى ${operationAt}: المستحق حتى يوم الإغلاق ${closeSettlement.amountDueThroughClose} ر.س؛ الأيام غير المستخدمة ${closeSettlement.remainingDays} يوم بقيمة ${closeSettlement.unusedValue} ر.س؛ الرصيد السابق ${closeSettlement.balances.previousOutstanding} ر.س؛ الرصيد الحالي ${closeSettlement.balances.currentOutstanding} ر.س${closeSettlement.shouldRecordReturn ? `؛ رصيد دائن للعميل ${closeSettlement.customerCredit} ر.س؛ رُحّلت السيارة إلى سجل الاسترجاعات` : ""}${input.details ? `؛ ${input.details}` : ""}`;
     if (!closeSettlement.canClose) throw new Error(`لا يمكن إغلاق العقد: بقي رصيد ${closeSettlement.balances.grandOutstanding} ر.س حتى يوم الإغلاق فقط. علّق العقد أو سجّل دفعة أولاً.`);
   }
   if (input.operation === "return") {
@@ -617,7 +618,7 @@ export async function getDashboardAlerts() {
   overdue.slice(0, 10).forEach((contract) => alerts.push({ type: "overdue", title: `العقد ${contract.contractNumber} متأخر`, description: `تاريخ التسليم المتوقع ${contract.expectedReturnDate}`, severity: "danger" }));
   maintenance.slice(0, 10).forEach((vehicle) => alerts.push({ type: "maintenance", title: `السيارة ${vehicle.plateNumber} تحتاج صيانة`, description: `${vehicle.make} ${vehicle.model} غير متاحة للتأجير`, severity: "warning" }));
   oilDue.slice(0, 10).forEach((vehicle) => alerts.push({ type: "maintenance", title: `موعد تغيير زيت السيارة ${vehicle.plateNumber}`, description: `العداد الحالي ${vehicle.mileage.toLocaleString()} كم؛ الموعد عند ${((vehicle.lastOilChangeMileage ?? 0) + vehicle.oilChangeInterval).toLocaleString()} كم`, severity: "warning" }));
-  documents.sort((a, b) => a.value.getTime() - b.value.getTime()).slice(0, 10).forEach((document) => alerts.push({ type: "document", title: `وثيقة ${document.label} للسيارة ${document.plateNumber}`, description: `تاريخ الانتهاء ${document.value.toLocaleDateString("ar-SA")}`, severity: document.value.getTime() < Date.now() ? "danger" : "warning" }));
+  documents.sort((a, b) => a.value.getTime() - b.value.getTime()).slice(0, 10).forEach((document) => alerts.push({ type: "document", title: `وثيقة ${document.label} للسيارة ${document.plateNumber}`, description: `تاريخ الانتهاء ${document.value}`, severity: document.value.getTime() < Date.now() ? "danger" : "warning" }));
   return alerts;
 }
 

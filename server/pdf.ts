@@ -2,6 +2,7 @@ import { PDFDocument, PDFFont, PDFPage, rgb } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import fs from "fs/promises";
 import { officePrint } from "../shared/officePrint";
+import { formatGregorianDate } from "../shared/dateFormat";
 
 const officeLetterheadPath = "/manus-storage/mishari-office-letterhead_30b0512c.png";
 
@@ -55,7 +56,7 @@ export async function generateContractPdf(data: any, origin?: string) {
 
   drawTextRtl("عقد إيجار سيارة", 50, height - 145, 18);
   drawTextRtl(`رقم العقد: ${data.contractNumber}`, 50, height - 175);
-  drawTextRtl(`التاريخ: ${new Date().toLocaleDateString("ar-SA")}`, 50, height - 195);
+  drawTextRtl(`التاريخ: ${formatGregorianDate(new Date())}`, 50, height - 195);
   drawTextRtl("بيانات المستأجر:", 50, height - 235, 14);
   drawTextRtl(`الاسم: ${data.customerName}`, 70, height - 255);
   drawTextRtl(`رقم الهوية: ${data.identityNumber}`, 70, height - 275);
@@ -89,7 +90,7 @@ export async function generateReceiptPdf(data: any, origin?: string) {
 
   drawTextRtl("سند قبض", 50, height - 145, 18);
   drawTextRtl(`رقم السند: ${data.receiptNumber ?? "-"}`, 50, height - 175);
-  drawTextRtl(`التاريخ: ${new Date(data.createdAt ?? new Date()).toLocaleDateString("ar-SA")}`, 50, height - 195);
+  drawTextRtl(`التاريخ: ${formatGregorianDate(data.createdAt ?? new Date())}`, 50, height - 195);
   drawTextRtl(`استلمنا من السيد/ة: ${data.customerName}`, 50, height - 245);
   drawTextRtl(`مبلغ وقدره: ${data.amount} ر.س`, 50, height - 270);
   drawTextRtl(`طريقة الدفع: ${data.paymentMethod ?? "cash"}`, 50, height - 295);

@@ -1,3 +1,4 @@
+import { formatGregorianDate, formatGregorianDateTime } from "@shared/dateFormat";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,7 +13,7 @@ import { Link, useLocation } from "wouter";
 
 const statuses: Record<string, string> = { active: "ساري", overdue: "متأخر", suspended: "معلق", closed: "مغلق", returned: "مسترجع" };
 const operationLabels: Record<string, string> = { new_contract: "عقد جديد", extension: "تمديد", payment: "دفعة", additional_fee: "رسوم إضافية", rate_update: "تعديل سعر", vehicle_swap: "تبديل سيارة", suspend: "تعليق", close: "إغلاق", return: "استرجاع" };
-const fmtDate = (value: Date | string | null | undefined) => value ? new Date(value).toLocaleDateString("ar-SA") : "—";
+const fmtDate = (value: Date | string | null | undefined) => value ? formatGregorianDate(value) : "—";
 const officeLetterhead = "/manus-storage/mishari-office-letterhead_30b0512c.png";
 
 export default function CustomerDetailsPage() {
