@@ -229,7 +229,7 @@ export async function searchCustomerLedger(query: string) {
 
 export async function getDashboardSummary() {
   const db = await getDb();
-  if (!db) return { activeContracts: 0, overdueContracts: 0, suspendedContracts: 0, availableVehicles: 0, totalVehicles: 0, rentedVehicles: 0, outstandingAmount: "0.00", previousOutstanding: "0.00", delayOutstanding: "0.00", currentOutstanding: "0.00", maintenanceVehicles: 0, oilDueVehicles: 0, expiringDocuments: 0, todayPayments: "0.00" };
+  if (!db) return { activeContracts: 0, overdueContracts: 0, suspendedContracts: 0, availableVehicles: 0, totalVehicles: 0, rentedVehicles: 0, outstandingAmount: "0.00", previousOutstanding: "0.00", delayOutstanding: "0.00", currentOutstanding: "0.00", grandOutstanding: "0.00", maintenanceVehicles: 0, oilDueVehicles: 0, expiringDocuments: 0, todayPayments: "0.00" };
   await db.update(contracts).set({ status: "overdue" }).where(and(eq(contracts.status, "active"), sql`${contracts.expectedReturnDate} < curdate()`));
   const [active, overdue, suspended, available, totalVehicles, rentedVehicles, outstanding, maintenance, oilDue, expiringDocuments, todayPayments] = await Promise.all([
     db.select({ count: sql<number>`count(*)` }).from(contracts).where(eq(contracts.status, "active")),
@@ -246,7 +246,7 @@ export async function getDashboardSummary() {
   ]);
   const financialRows = await db.select({ contract: contracts }).from(contracts).where(inArray(contracts.status, ["active", "overdue"]));
   const breakdown = calculateDashboardOutstandingBreakdown(financialRows.map(({ contract }) => ({ totalAmount: contract.totalAmount, expectedReturnDate: contract.expectedReturnDate, rentalAmount: contract.rentalAmount, type: contract.type, actualReturnDate: contract.actualReturnDate, paidAmount: contract.paidAmount })));
-  return { activeContracts: Number(active[0]?.count ?? 0), overdueContracts: Number(overdue[0]?.count ?? 0), suspendedContracts: Number(suspended[0]?.count ?? 0), availableVehicles: Number(available[0]?.count ?? 0), totalVehicles: Number(totalVehicles[0]?.count ?? 0), rentedVehicles: Number(rentedVehicles[0]?.count ?? 0), outstandingAmount: String(outstanding[0]?.amount ?? "0.00"), previousOutstanding: breakdown.previousOutstanding, delayOutstanding: breakdown.delayOutstanding, currentOutstanding: breakdown.currentOutstanding, maintenanceVehicles: Number(maintenance[0]?.count ?? 0), oilDueVehicles: Number(oilDue[0]?.count ?? 0), expiringDocuments: Number(expiringDocuments[0]?.count ?? 0), todayPayments: String(todayPayments[0]?.amount ?? "0.00") };
+  return { activeContracts: Number(active[0]?.count ?? 0), overdueContracts: Number(overdue[0]?.count ?? 0), suspendedContracts: Number(suspended[0]?.count ?? 0), availableVehicles: Number(available[0]?.count ?? 0), totalVehicles: Number(totalVehicles[0]?.count ?? 0), rentedVehicles: Number(rentedVehicles[0]?.count ?? 0), outstandingAmount: String(outstanding[0]?.amount ?? "0.00"), previousOutstanding: breakdown.previousOutstanding, delayOutstanding: breakdown.delayOutstanding, currentOutstanding: breakdown.currentOutstanding, grandOutstanding: breakdown.grandOutstanding, maintenanceVehicles: Number(maintenance[0]?.count ?? 0), oilDueVehicles: Number(oilDue[0]?.count ?? 0), expiringDocuments: Number(expiringDocuments[0]?.count ?? 0), todayPayments: String(todayPayments[0]?.amount ?? "0.00") };
 }
 
 export async function createCustomer(input: { identityNumber: string; fullName: string; phone: string; phoneSecondary?: string; email?: string; notes?: string }) {
@@ -930,6 +930,14 @@ export async function listBlockedCustomers() {
   const db = await getDb();
   if (!db) return [];
   return db.select().from(blockedCustomers).where(eq(blockedCustomers.isActive, true)).orderBy(blockedCustomers.fullName);
+}
+
+export async function createBlockedCustomer(input: { fullName: string; identityNumber?: string; phone?: string; nationality?: string; reason: string; source?: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  if (!input.fullName.trim() || !input.reason.trim()) throw new Error("اسم العميل وسبب الحظر مطلوبان");
+  const result = await db.insert(blockedCustomers).values({ ...input, fullName: input.fullName.trim(), identityNumber: input.identityNumber?.trim() || null, phone: input.phone?.trim() || null, nationality: input.nationality?.trim() || null, reason: input.reason.trim(), source: input.source?.trim() || "إضافة من صفحة العملاء" });
+  return { id: result[0]?.insertId, success: true as const };
 }
 
 export async function findBlockedCustomer(identityNumber: string) {

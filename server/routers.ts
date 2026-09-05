@@ -17,7 +17,7 @@ const managerPermissionProcedure = (permission: GranularPermissionKey) => adminP
 });
 
 import { createCustomer, updateCustomer, deleteCustomerSafely, createMaintenance, updateMaintenance, deleteMaintenanceSafely, createOfficeLiability, updateOfficeLiability, deleteOfficeLiabilitySafely, createContract, deleteContractSafely, deleteOperationSafely, deletePaymentSafely, deleteVehicle, getAccountingSummary, getOperationalAccountingSummary, listPayments, listReturns, getDashboardAlerts, getDashboardSummary, getFleetReport,   getOfficeLiabilitySummary, getOfficeInsights,
-  listExpenseTypes, createExpenseType, listEmployees, createEmployee, getContractDetails, getCustomerDetails, getVehicleDetails, getVehicleRevenueReport, listAvailableVehicles, listVehicles, listContracts, listContractOperations, listAllContractOperations, listCustomers, listMaintenance, listOfficeLiabilities, recordContractOperation, recordOfficeLiabilityPayment, approveOfficeLiability, searchCustomerLedger, updateMaintenanceStatus, createVehicle, updateVehicle, updateContractRetroactively, updatePaymentRetroactively, upsertUser, getUserByUsername, listManagedUsers, createManagedUser, updateManagedUser, deleteManagedUser, hashLocalPassword, createEmailVerificationToken, verifyManagedUserEmail, changeManagedUserPassword, createPasswordResetToken, resetManagedUserPassword, listBlockedCustomers, listSiteContent, upsertSiteContent, resetSiteContent } from "./db";
+  listExpenseTypes, createExpenseType, listEmployees, createEmployee, getContractDetails, getCustomerDetails, getVehicleDetails, getVehicleRevenueReport, listAvailableVehicles, listVehicles, listContracts, listContractOperations, listAllContractOperations, listCustomers, listMaintenance, listOfficeLiabilities, recordContractOperation, recordOfficeLiabilityPayment, approveOfficeLiability, searchCustomerLedger, updateMaintenanceStatus, createVehicle, updateVehicle, updateContractRetroactively, updatePaymentRetroactively, upsertUser, getUserByUsername, listManagedUsers, createManagedUser, updateManagedUser, deleteManagedUser, hashLocalPassword, createEmailVerificationToken, verifyManagedUserEmail, changeManagedUserPassword, createPasswordResetToken, resetManagedUserPassword, listBlockedCustomers, createBlockedCustomer, listSiteContent, upsertSiteContent, resetSiteContent } from "./db";
 
 export const appRouter = router({
   system: systemRouter,
@@ -69,6 +69,7 @@ export const appRouter = router({
   }),
   blockedCustomers: router({
     list: managerPermissionProcedure("blocked_customers.view").query(() => listBlockedCustomers()),
+    create: managerPermissionProcedure("blocked_customers.create").input(z.object({ fullName: z.string().trim().min(2), identityNumber: z.string().trim().max(64).optional(), phone: z.string().trim().max(32).optional(), nationality: z.string().trim().max(64).optional(), reason: z.string().trim().min(2), source: z.string().trim().max(160).optional() })).mutation(({ input }) => createBlockedCustomer(input)),
   }),
   expenseTypes: router({
     list: permissionProcedure("accounting.view").query(() => listExpenseTypes()),
