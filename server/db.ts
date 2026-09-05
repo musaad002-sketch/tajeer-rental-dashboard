@@ -11,6 +11,7 @@ import { extendReturnDate, isFinanciallyDistressed } from "../shared/contractCal
 import { calculateContractTotals } from "../shared/contractTotals";
 import { isExpenseIncludedInNetRevenue } from "../shared/expenseApproval";
 import { calculateContractBalances } from "../shared/contractBalances";
+import { calculateDashboardOutstandingBreakdown } from "../shared/dashboardOutstanding";
 import { addAdditionalFee, calculateRateAdjustedTotal } from "../shared/contractFinance";
 import { isMileageAdvanceValid } from "../shared/vehicleMaintenance";
 import { allocatePayment } from "../shared/paymentAllocation";
@@ -228,7 +229,7 @@ export async function searchCustomerLedger(query: string) {
 
 export async function getDashboardSummary() {
   const db = await getDb();
-  if (!db) return { activeContracts: 0, overdueContracts: 0, suspendedContracts: 0, availableVehicles: 0, totalVehicles: 0, rentedVehicles: 0, outstandingAmount: "0.00", maintenanceVehicles: 0, oilDueVehicles: 0, expiringDocuments: 0, todayPayments: "0.00" };
+  if (!db) return { activeContracts: 0, overdueContracts: 0, suspendedContracts: 0, availableVehicles: 0, totalVehicles: 0, rentedVehicles: 0, outstandingAmount: "0.00", previousOutstanding: "0.00", delayOutstanding: "0.00", currentOutstanding: "0.00", maintenanceVehicles: 0, oilDueVehicles: 0, expiringDocuments: 0, todayPayments: "0.00" };
   await db.update(contracts).set({ status: "overdue" }).where(and(eq(contracts.status, "active"), sql`${contracts.expectedReturnDate} < curdate()`));
   const [active, overdue, suspended, available, totalVehicles, rentedVehicles, outstanding, maintenance, oilDue, expiringDocuments, todayPayments] = await Promise.all([
     db.select({ count: sql<number>`count(*)` }).from(contracts).where(eq(contracts.status, "active")),
@@ -243,7 +244,9 @@ export async function getDashboardSummary() {
     db.select({ count: sql<number>`count(*)` }).from(vehicles).where(or(sql`${vehicles.insuranceExpiryDate} <= date_add(curdate(), interval 30 day)`, sql`${vehicles.inspectionExpiryDate} <= date_add(curdate(), interval 30 day)`, sql`${vehicles.registrationExpiryDate} <= date_add(curdate(), interval 30 day)`)),
     db.select({ amount: sql<string>`coalesce(sum(${payments.amount}), 0)` }).from(payments).where(sql`date(${payments.createdAt}) = curdate()`),
   ]);
-  return { activeContracts: Number(active[0]?.count ?? 0), overdueContracts: Number(overdue[0]?.count ?? 0), suspendedContracts: Number(suspended[0]?.count ?? 0), availableVehicles: Number(available[0]?.count ?? 0), totalVehicles: Number(totalVehicles[0]?.count ?? 0), rentedVehicles: Number(rentedVehicles[0]?.count ?? 0), outstandingAmount: String(outstanding[0]?.amount ?? "0.00"), maintenanceVehicles: Number(maintenance[0]?.count ?? 0), oilDueVehicles: Number(oilDue[0]?.count ?? 0), expiringDocuments: Number(expiringDocuments[0]?.count ?? 0), todayPayments: String(todayPayments[0]?.amount ?? "0.00") };
+  const financialRows = await db.select({ contract: contracts }).from(contracts).where(inArray(contracts.status, ["active", "overdue"]));
+  const breakdown = calculateDashboardOutstandingBreakdown(financialRows.map(({ contract }) => ({ totalAmount: contract.totalAmount, expectedReturnDate: contract.expectedReturnDate, rentalAmount: contract.rentalAmount, type: contract.type, actualReturnDate: contract.actualReturnDate, paidAmount: contract.paidAmount })));
+  return { activeContracts: Number(active[0]?.count ?? 0), overdueContracts: Number(overdue[0]?.count ?? 0), suspendedContracts: Number(suspended[0]?.count ?? 0), availableVehicles: Number(available[0]?.count ?? 0), totalVehicles: Number(totalVehicles[0]?.count ?? 0), rentedVehicles: Number(rentedVehicles[0]?.count ?? 0), outstandingAmount: String(outstanding[0]?.amount ?? "0.00"), previousOutstanding: breakdown.previousOutstanding, delayOutstanding: breakdown.delayOutstanding, currentOutstanding: breakdown.currentOutstanding, maintenanceVehicles: Number(maintenance[0]?.count ?? 0), oilDueVehicles: Number(oilDue[0]?.count ?? 0), expiringDocuments: Number(expiringDocuments[0]?.count ?? 0), todayPayments: String(todayPayments[0]?.amount ?? "0.00") };
 }
 
 export async function createCustomer(input: { identityNumber: string; fullName: string; phone: string; phoneSecondary?: string; email?: string; notes?: string }) {

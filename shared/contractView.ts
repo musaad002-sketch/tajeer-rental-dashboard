@@ -4,7 +4,7 @@ import { calculateContractBalances } from "./contractBalances";
 type ContractRow = {
   contract: { contractNumber: string; expectedReturnDate: Date | string; status: string; totalAmount: string; paidAmount: string; rentalAmount?: string | number; type?: "daily" | "monthly"; actualReturnDate?: Date | string | null };
   customer?: { fullName: string } | null;
-  vehicle?: { make: string; model: string } | null;
+  vehicle?: { make: string; model: string; plateNumber?: string } | null;
 };
 
 export function formatContractRows(rows: ContractRow[]) {
@@ -15,6 +15,7 @@ export function formatContractRows(rows: ContractRow[]) {
     id: `#${contract.contractNumber}`,
     customer: customer?.fullName ?? "عميل غير محدد",
     car: vehicle ? `${vehicle.make} ${vehicle.model}` : "سيارة غير محددة",
+    plate: vehicle?.plateNumber ?? "لوحة غير محددة",
     delivery: formatGregorianDate(contract.expectedReturnDate),
     overdue: contract.status === "overdue" ? "متأخر" : "—",
     due: `${Math.max(0, Number(contract.totalAmount) - Number(contract.paidAmount))} ر.س`,
