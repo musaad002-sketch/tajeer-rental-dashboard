@@ -36,10 +36,10 @@ describe("vehicle documents and mileage", () => {
     expect(mocks.updateVehicle).toHaveBeenCalledWith(41, expect.objectContaining({ mileage: 82000, lastOilChangeMileage: 82000, registrationExpiryDate: "2027-03-01" }));
   });
 
-  it("يرفض المشغّل تعديل بيانات السيارة مع إبقاء إنشاء سيارة جديدة متاحاً", async () => {
-    const callsBefore = mocks.updateVehicle.mock.calls.length;
-    await expect(appRouter.createCaller(operationalContext).vehicles.update({ id: 41, mileage: 82_100 })).rejects.toMatchObject({ code: "FORBIDDEN" });
-    expect(mocks.updateVehicle.mock.calls.length).toBe(callsBefore);
-    await expect(appRouter.createCaller(operationalContext).vehicles.create({ plateNumber: "OPS 1", make: "كيا", model: "K5", modelYear: 2024, dailyRate: "120", monthlyRate: "3000" })).resolves.toBeDefined();
+  it("يسمح للمشغل بتحديث العداد ويمنعه من تحديث وثائق السيارة أو إنشائها", async () => {
+    await expect(appRouter.createCaller(operationalContext).vehicles.update({ id: 41, mileage: 82_100 })).resolves.toBeDefined();
+    expect(mocks.updateVehicle).toHaveBeenCalledWith(41, expect.objectContaining({ mileage: 82_100 }));
+    await expect(appRouter.createCaller(operationalContext).vehicles.update({ id: 41, insuranceExpiryDate: "2027-01-01" })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(appRouter.createCaller(operationalContext).vehicles.create({ plateNumber: "OPS 1", make: "كيا", model: "K5", modelYear: 2024, dailyRate: "120", monthlyRate: "3000" })).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 });

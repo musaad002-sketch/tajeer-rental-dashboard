@@ -24,7 +24,7 @@ describe("maintenance and safe vehicle deletion", () => {
 
   it("allows only the administrator to request a vehicle deletion", async () => {
     await expect(appRouter.createCaller(adminContext).vehicles.delete({ id: 99 })).resolves.toEqual({ success: true, id: 99 });
-    expect(mocks.deleteVehicle).toHaveBeenCalledWith(99);
+    expect(mocks.deleteVehicle).toHaveBeenCalledWith(99, 1);
     await expect(appRouter.createCaller(operationalContext).vehicles.delete({ id: 99 })).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 });

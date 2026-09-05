@@ -470,10 +470,17 @@ export async function recordContractOperation(input: { contractId?: number; cont
   if (input.operation === "return") await db.update(contracts).set({ status: "returned", actualReturnDate: new Date() }).where(eq(contracts.id, contractId));
 }
 
-export async function updateMaintenanceStatus(id: number, status: "pending" | "in_progress" | "completed" | "written_off", vehicleId: number) {
+export async function updateMaintenanceStatus(id: number, status: "pending" | "in_progress" | "completed" | "written_off", vehicleId: number, updatedBy?: number) {
   const db = await getDb(); if (!db) throw new Error("Database unavailable");
-  await db.update(maintenanceRecords).set({ status, endDate: status === "completed" || status === "written_off" ? new Date() : null }).where(eq(maintenanceRecords.id, id));
-  await db.update(vehicles).set({ status: status === "completed" ? "available" : status === "written_off" ? "unavailable" : "maintenance" }).where(eq(vehicles.id, vehicleId));
+  const existing = await db.select().from(maintenanceRecords).where(eq(maintenanceRecords.id, id)).limit(1);
+  const item = existing[0];
+  if (!item) throw new Error("سجل الصيانة غير موجود");
+  const endDate = status === "completed" || status === "written_off" ? new Date() : null;
+  const nextVehicleStatus = status === "completed" ? "available" : status === "written_off" ? "unavailable" : "maintenance";
+  await db.update(maintenanceRecords).set({ status, endDate }).where(eq(maintenanceRecords.id, id));
+  await db.update(vehicles).set({ status: nextVehicleStatus }).where(eq(vehicles.id, vehicleId));
+  await db.insert(deletionAudits).values({ entityType: "maintenance_status", entityId: id, snapshot: JSON.stringify({ before: item, after: { status, endDate, vehicleId, vehicleStatus: nextVehicleStatus } }), reason: "تغيير حالة الصيانة", deletedBy: updatedBy });
+  return { success: true as const };
 }
 
 export async function createVehicle(input: { plateNumber: string; make: string; model: string; modelYear: number; dailyRate: string; monthlyRate: string; mileage?: number; lastOilChangeMileage?: number; lastOilChangeDate?: string; oilChangeInterval?: number; insuranceExpiryDate?: string; inspectionExpiryDate?: string; registrationExpiryDate?: string; notes?: string }) {
@@ -494,20 +501,20 @@ export async function updateVehicle(id: number, input: { mileage?: number; lastO
   await db.update(vehicles).set({ ...input, lastOilChangeDate: input.lastOilChangeDate ? new Date(input.lastOilChangeDate) : input.lastOilChangeDate === "" ? null : undefined, insuranceExpiryDate: input.insuranceExpiryDate ? new Date(input.insuranceExpiryDate) : input.insuranceExpiryDate === "" ? null : undefined, inspectionExpiryDate: input.inspectionExpiryDate ? new Date(input.inspectionExpiryDate) : input.inspectionExpiryDate === "" ? null : undefined, registrationExpiryDate: input.registrationExpiryDate ? new Date(input.registrationExpiryDate) : input.registrationExpiryDate === "" ? null : undefined }).where(eq(vehicles.id, id));
 }
 
-export async function deleteVehicle(id: number) {
+export async function deleteVehicle(id: number, deletedBy?: number) {
   const db = await getDb(); if (!db) throw new Error("Database unavailable");
   const [vehicleRows, contractRows, maintenanceRows] = await Promise.all([
-    db.select({ id: vehicles.id }).from(vehicles).where(eq(vehicles.id, id)).limit(1),
+    db.select().from(vehicles).where(eq(vehicles.id, id)).limit(1),
     db.select({ id: contracts.id }).from(contracts).where(eq(contracts.vehicleId, id)).limit(1),
     db.select({ id: maintenanceRecords.id }).from(maintenanceRecords).where(eq(maintenanceRecords.vehicleId, id)).limit(1),
   ]);
   if (!vehicleRows[0]) throw new Error("السيارة غير موجودة أو تم حذفها مسبقاً");
   if (contractRows[0]) throw new Error("لا يمكن حذف السيارة لوجود عقود مرتبطة بها؛ احتفظ بها في السجل التاريخي");
   if (maintenanceRows[0]) throw new Error("لا يمكن حذف السيارة لوجود سجل صيانة مرتبط بها؛ احتفظ بها في السجل التاريخي");
+    await db.insert(deletionAudits).values({ entityType: "vehicle", entityId: id, snapshot: JSON.stringify(vehicleRows[0]), reason: "حذف سيارة بلا سجلات تشغيلية", deletedBy });
   await db.delete(vehicles).where(eq(vehicles.id, id));
   return { success: true };
 }
-
 export async function listContractOperations(contractId: number) {
   const db = await getDb(); if (!db) return [];
   return db.select().from(contractOperations).where(eq(contractOperations.contractId, contractId)).orderBy(desc(contractOperations.createdAt));
@@ -667,7 +674,7 @@ export async function approveOfficeLiability(input: { id: number; status: "appro
   return { success: true as const, status: input.status };
 }
 
-export async function recordOfficeLiabilityPayment(id: number, amount: string, paymentMethod: "cash" | "network" | "transfer") {
+export async function recordOfficeLiabilityPayment(id: number, amount: string, paymentMethod: "cash" | "network" | "transfer", paidBy?: number) {
   const db = await getDb(); if (!db) throw new Error("Database unavailable");
   const rows = await db.select().from(officeLiabilities).where(eq(officeLiabilities.id, id)).limit(1);
   const liability = rows[0];
@@ -675,6 +682,8 @@ export async function recordOfficeLiabilityPayment(id: number, amount: string, p
   const nextPaid = Math.min(Number(liability.amount), Number(liability.paidAmount) + Number(amount));
   const status = nextPaid >= Number(liability.amount) ? "paid" : nextPaid > 0 ? "partially_paid" : "open";
   await db.update(officeLiabilities).set({ paidAmount: nextPaid.toFixed(2), status, paymentMethod }).where(eq(officeLiabilities.id, id));
+  await db.insert(deletionAudits).values({ entityType: "liability_payment", entityId: id, snapshot: JSON.stringify({ before: liability, after: { paidAmount: nextPaid.toFixed(2), status, paymentMethod } }), reason: "تسجيل سداد مصروف", deletedBy: paidBy });
+  return { success: true as const, paidAmount: nextPaid.toFixed(2), status };
 }
 
 export async function getOfficeLiabilitySummary() {
@@ -902,11 +911,14 @@ export async function upsertSiteContent(input: { contentKey: string; contentType
   return { success: true as const };
 }
 
-export async function resetSiteContent(contentKey: string) {
+export async function resetSiteContent(contentKey: string, updatedBy?: number) {
   const db = await getDb();
   if (!db) throw new Error("قاعدة البيانات غير متاحة");
   const existing = await db.select().from(siteContent).where(eq(siteContent.contentKey, contentKey)).limit(1);
-  if (existing[0]) await db.update(siteContent).set({ value: existing[0].originalValue }).where(eq(siteContent.contentKey, contentKey));
+  if (existing[0]) {
+    await db.update(siteContent).set({ value: existing[0].originalValue, updatedBy }).where(eq(siteContent.contentKey, contentKey));
+    await db.insert(deletionAudits).values({ entityType: "site_content_reset", entityId: existing[0].id, snapshot: JSON.stringify({ before: existing[0], after: { value: existing[0].originalValue } }), reason: "استعادة القيمة الأصلية لمحتوى الواجهة", deletedBy: updatedBy });
+  }
   return { success: true as const };
 }
 

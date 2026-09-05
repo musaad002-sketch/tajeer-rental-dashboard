@@ -17,7 +17,7 @@ describe("maintenance close permissions", () => {
 
   it("يسمح للمدير بإغلاق سجل الصيانة قيد التنفيذ", async () => {
     await expect(appRouter.createCaller(adminContext).maintenance.updateStatus({ id: 21, vehicleId: 14, status: "completed" })).resolves.toEqual({ id: 21, status: "completed", vehicleId: 14 });
-    expect(mocks.updateMaintenanceStatus).toHaveBeenCalledWith(21, "completed", 14);
+    expect(mocks.updateMaintenanceStatus).toHaveBeenCalledWith(21, "completed", 14, 1);
   });
 });
 

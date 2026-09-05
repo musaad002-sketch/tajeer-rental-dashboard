@@ -17,6 +17,6 @@ describe("liabilities.pay", () => {
     payMock.mockClear();
     const caller = appRouter.createCaller(context);
     await caller.liabilities.pay({ id: 12, amount: "250", paymentMethod: "network" });
-    expect(payMock).toHaveBeenCalledWith(12, "250", "network");
+    expect(payMock).toHaveBeenCalledWith(12, "250", "network", 7);
   });
 });

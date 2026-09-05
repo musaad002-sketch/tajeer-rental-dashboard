@@ -6,30 +6,30 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/lib/trpc";
-import { canAccess } from "@shared/permissions";
+import { canPerform, type GranularPermissionKey } from "@shared/permissions";
 import { toast } from "sonner";
 import { Ban, CarFront, ChevronLeft, ClipboardList, FileBarChart, FileCheck2, FilePenLine, History, LayoutDashboard, LogOut, Menu, ShieldCheck, Users, WalletCards, Wrench, X } from "lucide-react";
 import { useState } from "react";
 import { useLocation } from "wouter";
 import NotificationCenter from "./NotificationCenter";
 
-const items = [
-  { label: "الرئيسية", icon: LayoutDashboard, path: "/", permission: "dashboard" },
-  { label: "العقود السارية", icon: FileCheck2, path: "/contracts/active", permission: "contracts" },
-  { label: "العقود المتأخرة", icon: History, path: "/contracts/overdue", permission: "contracts" },
-  { label: "العقود المعلقة", icon: ClipboardList, path: "/contracts/suspended", permission: "contracts" },
-  { label: "سجل العمليات", icon: History, path: "/contracts/history", permission: "operations" },
-  { label: "السيارات", icon: CarFront, path: "/vehicles", permission: "vehicles" },
-  { label: "العملاء", icon: Users, path: "/customers", permission: "customers" },
-  { label: "العملاء المحظورون", icon: Ban, path: "/blocked-customers", permission: "user_management" },
-  { label: "الحسابات والإيرادات", icon: WalletCards, path: "/accounting", permission: "accounting" },
-  { label: "سجل المدفوعات", icon: WalletCards, path: "/payments", permission: "accounting" },
-  { label: "سجل الاسترجاعات", icon: History, path: "/returns", permission: "operations" },
-  { label: "الصيانة والتالف", icon: Wrench, path: "/maintenance", permission: "maintenance" },
-  { label: "التقارير", icon: FileBarChart, path: "/reports", permission: "reports" },
-  { label: "إدارة المستخدمين", icon: Users, path: "/users", permission: "user_management" },
-  { label: "تحرير الواجهة", icon: FilePenLine, path: "/editor", permission: "user_management" },
-] as const;
+const items: { label: string; icon: typeof LayoutDashboard; path: string; permission: GranularPermissionKey }[] = [
+  { label: "الرئيسية", icon: LayoutDashboard, path: "/", permission: "dashboard.view" },
+  { label: "العقود السارية", icon: FileCheck2, path: "/contracts/active", permission: "contracts.view" },
+  { label: "العقود المتأخرة", icon: History, path: "/contracts/overdue", permission: "contracts.view" },
+  { label: "العقود المعلقة", icon: ClipboardList, path: "/contracts/suspended", permission: "contracts.view" },
+  { label: "سجل العمليات", icon: History, path: "/contracts/history", permission: "operations.view" },
+  { label: "السيارات", icon: CarFront, path: "/vehicles", permission: "vehicles.view" },
+  { label: "العملاء", icon: Users, path: "/customers", permission: "customers.view" },
+  { label: "العملاء المحظورون", icon: Ban, path: "/blocked-customers", permission: "blocked_customers.view" },
+  { label: "الحسابات والإيرادات", icon: WalletCards, path: "/accounting", permission: "accounting.view" },
+  { label: "سجل المدفوعات", icon: WalletCards, path: "/payments", permission: "payments.view" },
+  { label: "سجل الاسترجاعات", icon: History, path: "/returns", permission: "returns.view" },
+  { label: "الصيانة والتالف", icon: Wrench, path: "/maintenance", permission: "maintenance.view" },
+  { label: "التقارير", icon: FileBarChart, path: "/reports", permission: "reports.view" },
+  { label: "إدارة المستخدمين", icon: Users, path: "/users", permission: "user_management.view" },
+  { label: "تحرير الواجهة", icon: FilePenLine, path: "/editor", permission: "site_content.view" },
+];
 
 const focusClass = "focus-visible:ring-2 focus-visible:ring-[#16b4a5] focus-visible:ring-offset-2";
 export function shouldUseLocalAuth(hostname: string, envEnabled: boolean) {
@@ -62,7 +62,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     if (newPassword !== passwordConfirmation) return toast.error("تأكيد كلمة المرور غير مطابق");
     changePassword.mutate({ currentPassword, newPassword });
   };
-  const visibleItems = items.filter((item) => canAccess(user?.role ?? "user", user?.permissions, item.permission));
+  const visibleItems = items.filter((item) => canPerform(user?.role ?? "user", user?.permissions, item.permission));
   const active = items.find((item) => item.path === location)?.label ?? "الرئيسية";
 
   if (!user) {

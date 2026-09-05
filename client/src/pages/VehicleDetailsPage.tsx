@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
 import { calculateOilMaintenance } from "@shared/vehicleMaintenance";
+import { canPerform } from "@shared/permissions";
 import { ArrowRight, CarFront, ClipboardList, FileCheck, Gauge, History, Trash2, Wrench } from "lucide-react";
 import { type ChangeEvent, useState } from "react";
 import { toast } from "sonner";
@@ -51,6 +52,9 @@ export default function VehicleDetailsPage() {
   const row = details.data;
   const currentContract = row?.contracts.find(({ contract }) => ["active", "overdue"].includes(contract.status));
   const oilMaintenance = row ? calculateOilMaintenance({ currentMileage: row.vehicle.mileage, lastOilChangeMileage: row.vehicle.lastOilChangeMileage, oilChangeInterval: row.vehicle.oilChangeInterval }) : null;
+  const canCreateContract = canPerform(user?.role ?? "user", user?.permissions, "contracts.create");
+  const canMaintainVehicle = canPerform(user?.role ?? "user", user?.permissions, "vehicles.maintenance");
+  const canDeleteVehicle = canPerform(user?.role ?? "user", user?.permissions, "vehicles.delete");
 
   return (
     <DashboardLayout>
@@ -81,12 +85,12 @@ export default function VehicleDetailsPage() {
                     <p className="mt-1 text-sm text-slate-300">لوحة {row.vehicle.plateNumber} · موديل {row.vehicle.modelYear}</p>
                   </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-3"><Badge className="bg-white/10 text-white hover:bg-white/10">{statusLabels[row.vehicle.status] ?? row.vehicle.status}</Badge>{row.vehicle.status === "available" && <Link href={`/contracts/new?vehicleId=${row.vehicle.id}`} className="inline-flex min-h-10 items-center rounded-lg bg-[#14a99f] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#11978e] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#16b4a5]">فتح عقد جديد</Link>}</div>
+                <div className="flex flex-wrap items-center gap-3"><Badge className="bg-white/10 text-white hover:bg-white/10">{statusLabels[row.vehicle.status] ?? row.vehicle.status}</Badge>{row.vehicle.status === "available" && canCreateContract && <Link href={`/contracts/new?vehicleId=${row.vehicle.id}`} className="inline-flex min-h-10 items-center rounded-lg bg-[#14a99f] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#11978e] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#16b4a5]">فتح عقد جديد</Link>}</div>
               </CardContent>
             </Card>
 
-            {user?.role === "admin" && <VehicleEditor vehicle={row.vehicle} />}
-            {user?.role === "admin" && <VehicleDeleteAction vehicleId={row.vehicle.id} plateNumber={row.vehicle.plateNumber} onDeleted={() => setLocation("/vehicles")} />}
+            {canMaintainVehicle && <VehicleEditor vehicle={row.vehicle} />}
+            {canDeleteVehicle && <VehicleDeleteAction vehicleId={row.vehicle.id} plateNumber={row.vehicle.plateNumber} onDeleted={() => setLocation("/vehicles")} />}
 
             {currentContract && (
               <Card className="border-0 bg-[#effaf8] shadow-sm">
