@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isOperatorVisibleContractStatus, parsePermissions } from "./permissions";
+import { canPerform, isOperatorVisibleContractStatus, parseGranularPermissions, parsePermissions } from "./permissions";
 
 describe("operator permissions", () => {
   it("allows only active, overdue, and suspended contracts", () => {
@@ -14,5 +14,12 @@ describe("operator permissions", () => {
     const permissions = parsePermissions(JSON.stringify(["dashboard", "contracts", "operations", "accounting", "maintenance"]), "user");
     expect(permissions).not.toContain("reports");
     expect(permissions).not.toContain("user_management");
+  });
+
+  it("allows daily accounting access without aggregate report access", () => {
+    const permissions = parseGranularPermissions(null, "user");
+    expect(canPerform("user", JSON.stringify(permissions), "accounting.view")).toBe(true);
+    expect(canPerform("user", JSON.stringify(permissions), "reports.view")).toBe(false);
+    expect(canPerform("user", JSON.stringify(permissions), "reports.export")).toBe(false);
   });
 });
