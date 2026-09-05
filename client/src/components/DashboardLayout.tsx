@@ -62,7 +62,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     if (newPassword !== passwordConfirmation) return toast.error("تأكيد كلمة المرور غير مطابق");
     changePassword.mutate({ currentPassword, newPassword });
   };
-  const visibleItems = items.filter((item) => canPerform(user?.role ?? "user", user?.permissions, item.permission));
+  const visibleItems = items.filter((item, index, all) => all.findIndex((candidate) => candidate.path === item.path) === index && canPerform(user?.role ?? "user", user?.permissions, item.permission));
   const active = items.find((item) => item.path === location)?.label ?? "الرئيسية";
 
   if (!user) {
