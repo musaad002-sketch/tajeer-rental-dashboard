@@ -38,4 +38,23 @@ describe("recordContractOperation guardrails", () => {
 
     await expect(recordContractOperation({ contractNumber: "__NOT_REGISTERED_CLOSE__", operation: "close" })).rejects.toThrow("العقد غير موجود في قاعدة البيانات");
   });
+
+  it.each(["payment", "extension", "vehicle_swap", "suspend", "close", "return"] as const)("rejects %s after the contract has been returned", async (operation) => {
+    process.env.DATABASE_URL = "mysql://test";
+    fakeDb.select.mockReset();
+    fakeDb.select.mockImplementation(() => selectChain([{
+      id: 702,
+      customerId: 9,
+      vehicleId: 12,
+      status: "returned",
+      startDate: new Date(),
+      expectedReturnDate: new Date(),
+      rentalAmount: "300.00",
+      totalAmount: "300.00",
+      paidAmount: "300.00",
+      type: "daily",
+    }]));
+
+    await expect(recordContractOperation({ contractNumber: "1702", operation })).rejects.toThrow("تم استرجاع العقد وإغلاقه نهائياً");
+  });
 });

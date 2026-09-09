@@ -352,6 +352,7 @@ export async function recordContractOperation(input: { contractId?: number; cont
   const existing = await db.select().from(contracts).where(lookup).limit(1);
   const contract = existing[0];
   if (!contract) throw new Error("العقد غير موجود في قاعدة البيانات؛ أنشئ العقد أولاً ثم نفّذ العملية");
+  if (contract.status === "returned") throw new Error("لا يمكن تنفيذ أي عملية: تم استرجاع العقد وإغلاقه نهائياً");
   const contractId = contract.id;
   const effects = buildOperationEffects(input.operation, input.amount);
   if (input.operation === "suspend" && !isFinanciallyDistressed({ startDate: contract.startDate, unitRate: contract.rentalAmount, type: contract.type, paidAmount: contract.paidAmount })) throw new Error("لا يمكن تعليق العقد: الدفعات تغطي الإيجار المستحق حتى اليوم");
