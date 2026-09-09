@@ -58,3 +58,23 @@ describe("recordContractOperation guardrails", () => {
     await expect(recordContractOperation({ contractNumber: "1702", operation })).rejects.toThrow("تم استرجاع العقد وإغلاقه نهائياً");
   });
 });
+
+
+  it.each(["close", "return"] as const)("rejects %s when the contract has unpaid balance", async (operation) => {
+    process.env.DATABASE_URL = "mysql://test";
+    fakeDb.select.mockReset();
+    fakeDb.select.mockImplementation(() => selectChain([{
+      id: 703,
+      customerId: 9,
+      vehicleId: 12,
+      status: "active",
+      startDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+      expectedReturnDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
+      rentalAmount: "300.00",
+      totalAmount: "1200.00",
+      paidAmount: "0.00",
+      type: "daily",
+    }]));
+
+    await expect(recordContractOperation({ contractNumber: "1703", operation })).rejects.toThrow(/يوجد مبلغ غير مسدد/);
+  });

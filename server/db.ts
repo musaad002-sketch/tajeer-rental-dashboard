@@ -438,11 +438,14 @@ export async function recordContractOperation(input: { contractId?: number; cont
   if (input.operation === "close") {
     closeSettlement = calculateCloseSettlement({ baseTotal: contract.totalAmount, expectedReturnDate: contract.expectedReturnDate, closedAt: operationAt, rentalAmount: contract.rentalAmount, type: contract.type, paidAmount: contract.paidAmount });
     operationDetails = `تسوية الإغلاق حتى ${operationAt}: المستحق حتى يوم الإغلاق ${closeSettlement.amountDueThroughClose} ر.س؛ الأيام غير المستخدمة ${closeSettlement.remainingDays} يوم بقيمة ${closeSettlement.unusedValue} ر.س؛ الرصيد السابق ${closeSettlement.balances.previousOutstanding} ر.س؛ الرصيد الحالي ${closeSettlement.balances.currentOutstanding} ر.س${closeSettlement.shouldRecordReturn ? `؛ رصيد دائن للعميل ${closeSettlement.customerCredit} ر.س؛ رُحّلت السيارة إلى سجل الاسترجاعات` : ""}${input.details ? `؛ ${input.details}` : ""}`;
-    if (!closeSettlement.canClose) throw new Error(`لا يمكن إغلاق العقد: بقي رصيد ${closeSettlement.balances.grandOutstanding} ر.س حتى يوم الإغلاق فقط. علّق العقد أو سجّل دفعة أولاً.`);
+    if (!closeSettlement.canClose || Number(closeSettlement.balances.grandOutstanding) > 0) throw new Error(`لا يمكن إغلاق العقد: يوجد مبلغ غير مسدد قدره ${closeSettlement.balances.grandOutstanding} ر.س. سجّل الدفعة أولاً أو علّق العقد.`);
   }
   if (input.operation === "return") {
+    const returnTotals = calculateContractTotals({ baseTotal: contract.totalAmount, expectedReturnDate: contract.expectedReturnDate, rentalAmount: contract.rentalAmount, type: contract.type, actualReturnDate: operationAt });
+    const returnBalances = calculateContractBalances({ baseTotal: returnTotals.baseTotal, delayTotal: returnTotals.delayTotal, paidAmount: contract.paidAmount });
+    if (Number(returnBalances.grandOutstanding) > 0) throw new Error(`لا يمكن استرجاع العقد: يوجد مبلغ غير مسدد قدره ${returnBalances.grandOutstanding} ر.س. سجّل الدفعة أولاً أو علّق العقد.`);
     returnSettlement = calculateReturnSettlement({ expectedReturnDate: contract.expectedReturnDate, returnedAt: operationAt, rentalAmount: contract.rentalAmount, type: contract.type });
-    operationDetails = `استرجاع مبكر: الأيام المتبقية ${returnSettlement.remainingDays} يوم × ${returnSettlement.dailyRate} ر.س = ${returnSettlement.remainingValue} ر.س${input.details ? `؛ ${input.details}` : ""}`;
+    operationDetails = `استرجاع مبكر: الأيام المتبقية ${returnSettlement.remainingDays} يوم × ${returnSettlement.dailyRate} ر.س = ${returnSettlement.remainingValue} ر.س؛ المتبقي السابق ${returnBalances.previousOutstanding} ر.س؛ المتبقي الحالي ${returnBalances.currentOutstanding} ر.س${input.details ? `؛ ${input.details}` : ""}`;
   }
   const operationToPersist = input.operation === "close" && closeSettlement?.shouldRecordReturn ? "return" : input.operation;
   const operationVehicleId = input.operation === "close" || input.operation === "return" ? contract.vehicleId : input.vehicleId;
