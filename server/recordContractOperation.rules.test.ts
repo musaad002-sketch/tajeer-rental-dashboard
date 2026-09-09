@@ -78,3 +78,23 @@ describe("recordContractOperation guardrails", () => {
 
     await expect(recordContractOperation({ contractNumber: "1703", operation })).rejects.toThrow(/يوجد مبلغ غير مسدد/);
   });
+
+
+  it("rejects extension when arrears are not fully paid", async () => {
+    process.env.DATABASE_URL = "mysql://test";
+    fakeDb.select.mockReset();
+    fakeDb.select.mockImplementation(() => selectChain([{
+      id: 704,
+      customerId: 9,
+      vehicleId: 12,
+      status: "overdue",
+      startDate: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
+      expectedReturnDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+      rentalAmount: "300.00",
+      totalAmount: "3000.00",
+      paidAmount: "0.00",
+      type: "daily",
+    }]));
+
+    await expect(recordContractOperation({ contractNumber: "1704", operation: "extension", extensionDays: 3, extensionPaymentAmount: "100.00", extensionPaymentMethod: "cash" })).rejects.toThrow(/لا يمكن تمديد العقد قبل سداد المتأخرات/);
+  });
