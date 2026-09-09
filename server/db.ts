@@ -200,8 +200,9 @@ export async function getContractDetails(contractId: number) {
 
 export async function searchCustomerLedger(query: string) {
   const db = await getDb(); if (!db || !query.trim()) return [];
-  const match = `%${query.trim()}%`;
-  const contractRows = await db.select({ customer: customers, contract: contracts }).from(customers).leftJoin(contracts, eq(contracts.customerId, customers.id)).where(or(like(customers.fullName, match), like(customers.identityNumber, match), like(contracts.contractNumber, match))).orderBy(desc(customers.createdAt));
+  const normalizedQuery = query.trim();
+  const match = `%${normalizedQuery}%`;
+  const contractRows = await db.select({ customer: customers, contract: contracts }).from(customers).leftJoin(contracts, eq(contracts.customerId, customers.id)).where(or(like(customers.fullName, match), eq(customers.identityNumber, normalizedQuery), eq(customers.phone, normalizedQuery), eq(customers.phoneSecondary, normalizedQuery), like(contracts.contractNumber, match))).orderBy(desc(customers.createdAt));
   const contractIds = Array.from(new Set(contractRows.map((row) => row.contract?.id).filter((id): id is number => typeof id === "number")));
   if (!contractIds.length) return contractRows.map((row) => ({ ...row, payment: null, operation: null }));
   const [paymentRows, operationRows] = await Promise.all([
@@ -254,7 +255,17 @@ export async function getDashboardSummary() {
 
 export async function createCustomer(input: { identityNumber: string; fullName: string; phone: string; phoneSecondary?: string; email?: string; notes?: string }) {
   const db = await getDb(); if (!db) throw new Error("Database unavailable");
-  const result = await db.insert(customers).values(input); return result[0]?.insertId;
+  const identityNumber = input.identityNumber.trim();
+  const fullName = input.fullName.trim();
+  const phone = input.phone.trim();
+  const phoneSecondary = input.phoneSecondary?.trim() || undefined;
+  if (!identityNumber || !fullName || !phone) throw new Error("الهوية والاسم ورقم الجوال مطلوبة");
+  const phoneValues = [phone, phoneSecondary].filter((value): value is string => Boolean(value));
+  const duplicate = await db.select({ id: customers.id, fullName: customers.fullName }).from(customers).where(or(eq(customers.identityNumber, identityNumber), ...phoneValues.flatMap((value) => [eq(customers.phone, value), eq(customers.phoneSecondary, value)]))).limit(1);
+  if (duplicate[0]) throw new Error(`العميل مسجل مسبقاً باسم ${duplicate[0].fullName}; استخدم السجل الموجود بدلاً من تسجيله مرة أخرى`);
+  const blocked = await db.select({ id: blockedCustomers.id, fullName: blockedCustomers.fullName, reason: blockedCustomers.reason }).from(blockedCustomers).where(and(eq(blockedCustomers.isActive, true), or(eq(blockedCustomers.identityNumber, identityNumber), ...phoneValues.map((value) => eq(blockedCustomers.phone, value))))).limit(1);
+  if (blocked[0]) throw new Error(`لا يمكن تسجيل العميل لأنه محظور: ${blocked[0].reason || "يوجد سجل حظر فعال"}`);
+  const result = await db.insert(customers).values({ ...input, identityNumber, fullName, phone, phoneSecondary }); return result[0]?.insertId;
 }
 
 export async function updateCustomer(input: { id: number; identityNumber?: string; fullName?: string; phone?: string; phoneSecondary?: string | null; email?: string | null; notes?: string | null; reason: string; updatedBy?: number }) {
@@ -570,6 +581,13 @@ export async function nextContractNumber() {
 
 export async function createContract(input: { contractNumber?: string; customerId: number; vehicleId: number; vehicleMileage?: number; type: "daily" | "monthly"; contractScope?: "domestic_limited" | "domestic_open" | "international"; startDate: string; expectedReturnDate: string; rentalAmount: string; days: number; totalAmount: string; paidAmount?: string; initialCashAmount?: string; initialNetworkAmount?: string; notes?: string; createdBy?: number }) {
   const db = await getDb(); if (!db) throw new Error("Database unavailable");
+  const customerRows = await db.select().from(customers).where(eq(customers.id, input.customerId)).limit(1);
+  const customer = customerRows[0];
+  if (!customer) throw new Error("العميل غير موجود؛ اختر عميلاً مسجلاً أولاً");
+  const blockedByIdentity = await db.select({ id: blockedCustomers.id, reason: blockedCustomers.reason }).from(blockedCustomers).where(and(eq(blockedCustomers.isActive, true), eq(blockedCustomers.identityNumber, customer.identityNumber))).limit(1);
+  const blockedByPhone = blockedByIdentity[0] ? [] : await db.select({ id: blockedCustomers.id, reason: blockedCustomers.reason }).from(blockedCustomers).where(and(eq(blockedCustomers.isActive, true), or(eq(blockedCustomers.phone, customer.phone), ...(customer.phoneSecondary ? [eq(blockedCustomers.phone, customer.phoneSecondary)] : [])))).limit(1);
+  const blocked = blockedByIdentity[0] || blockedByPhone[0];
+  if (blocked) throw new Error(`لا يمكن إنشاء عقد لهذا العميل لأنه محظور: ${blocked.reason || "يوجد سجل حظر فعال"}`);
   const available = await listAvailableVehicles();
   const selectedVehicle = available.find((vehicle) => vehicle.id === input.vehicleId);
   if (!selectedVehicle) throw new Error("السيارة غير متاحة للتأجير بسبب عقد أو صيانة مفتوحة");
