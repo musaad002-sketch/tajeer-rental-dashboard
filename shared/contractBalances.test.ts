@@ -3,7 +3,7 @@ import { calculateContractBalances } from "./contractBalances";
 
 describe("calculateContractBalances", () => {
   it("يعامل الإيجار غير المسدد عند إنشاء العقد كرصد سابق", () => {
-    expect(calculateContractBalances({ baseTotal: "2200", delayTotal: "0", paidAmount: "0" })).toEqual({
+    expect(calculateContractBalances({ baseTotal: "2200", delayTotal: "0", paidAmount: "0" })).toMatchObject({
       previousOutstanding: "2200.00",
       currentOutstanding: "0.00",
       grandOutstanding: "2200.00",
@@ -11,7 +11,7 @@ describe("calculateContractBalances", () => {
   });
 
   it("يضع رسوم التأخير في الرصيد الحالي بعد سداد الرصيد السابق أولاً", () => {
-    expect(calculateContractBalances({ baseTotal: "100", delayTotal: "200", paidAmount: "100" })).toEqual({
+    expect(calculateContractBalances({ baseTotal: "100", delayTotal: "200", paidAmount: "100" })).toMatchObject({
       previousOutstanding: "0.00",
       currentOutstanding: "200.00",
       grandOutstanding: "200.00",
@@ -19,7 +19,7 @@ describe("calculateContractBalances", () => {
   });
 
   it("يخصم أي سداد زائد عن الأساس من الرصيد الحالي", () => {
-    expect(calculateContractBalances({ baseTotal: "100", delayTotal: "200", paidAmount: "175" })).toEqual({
+    expect(calculateContractBalances({ baseTotal: "100", delayTotal: "200", paidAmount: "175" })).toMatchObject({
       previousOutstanding: "0.00",
       currentOutstanding: "125.00",
       grandOutstanding: "125.00",

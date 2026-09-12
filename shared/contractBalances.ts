@@ -1,26 +1,34 @@
-import { formatMoney } from "./contractCalculation";
+import { allocateFinancialPayment } from "./financialLedger";
 
 /**
- * يقسم المبلغ المستحق إلى رصيد سابق ورصيد حالي:
- * الرصيد السابق هو الالتزام الأساسي للعقد (أو الشهر السابق) الذي لم يسدد بعد.
- * الرصيد الحالي هو رسوم التأخير المتبقية بعد استنفاد أي دفعات زائدة عن الأساس.
+ * يحافظ هذا المساعد على واجهة المشروع القديمة، لكنه يستخدم الآن نفس أولوية
+ * التوزيع الموحدة: المتبقي السابق ثم التأخير ثم الكيلومترات الزائدة ثم الديون الأخرى.
  */
 export function calculateContractBalances(input: {
   baseTotal: string | number;
   delayTotal: string | number;
   paidAmount: string | number;
+  excessMileageBalance?: string | number;
+  otherBalance?: string | number;
 }) {
-  const baseTotal = Math.max(0, Number(input.baseTotal) || 0);
-  const delayTotal = Math.max(0, Number(input.delayTotal) || 0);
-  const paidAmount = Math.max(0, Number(input.paidAmount) || 0);
-  const previousOutstanding = Math.max(0, baseTotal - paidAmount);
-  const paymentAfterPrevious = Math.max(0, paidAmount - baseTotal);
-  const currentOutstanding = Math.max(0, delayTotal - paymentAfterPrevious);
-  const grandOutstanding = previousOutstanding + currentOutstanding;
+  const ledger = allocateFinancialPayment({
+    previousBalance: input.baseTotal,
+    delayBalance: input.delayTotal,
+    excessMileageBalance: input.excessMileageBalance,
+    otherBalance: input.otherBalance,
+    payment: input.paidAmount,
+  });
 
   return {
-    previousOutstanding: formatMoney(previousOutstanding),
-    currentOutstanding: formatMoney(currentOutstanding),
-    grandOutstanding: formatMoney(grandOutstanding),
+    previousOutstanding: ledger.previousBalance,
+    currentOutstanding: ledger.delayBalance,
+    excessMileageOutstanding: ledger.excessMileageBalance,
+    otherOutstanding: ledger.otherBalance,
+    grandOutstanding: ledger.totalOutstanding,
+    paymentToPrevious: ledger.paymentToPrevious,
+    paymentToDelay: ledger.paymentToDelay,
+    paymentToExcessMileage: ledger.paymentToExcessMileage,
+    paymentToOther: ledger.paymentToOther,
+    unappliedPayment: ledger.unappliedPayment,
   };
 }
