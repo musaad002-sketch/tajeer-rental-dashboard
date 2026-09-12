@@ -1,0 +1,1 @@
+ALTER TABLE `contracts` ADD `startMileage` int DEFAULT 0 NOT NULL;

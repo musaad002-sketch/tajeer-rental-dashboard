@@ -1,28 +1,41 @@
+import { allocateFinancialPayment } from "./financialLedger";
+
 export type PaymentAllocation = {
   appliedToPrevious: number;
   appliedToCurrent: number;
+  appliedToExcessMileage: number;
+  appliedToOther: number;
   unapplied: number;
   previousRemaining: number;
   currentRemaining: number;
+  excessMileageRemaining: number;
+  otherRemaining: number;
 };
 
 export function allocatePayment(input: {
   paymentAmount: number;
   previousOutstanding: number;
   currentOutstanding: number;
+  excessMileageOutstanding?: number;
+  otherOutstanding?: number;
 }): PaymentAllocation {
-  const paymentAmount = Math.max(0, Number(input.paymentAmount) || 0);
-  const previousOutstanding = Math.max(0, Number(input.previousOutstanding) || 0);
-  const currentOutstanding = Math.max(0, Number(input.currentOutstanding) || 0);
-  const appliedToPrevious = Math.min(paymentAmount, previousOutstanding);
-  const remainingPayment = paymentAmount - appliedToPrevious;
-  const appliedToCurrent = Math.min(remainingPayment, currentOutstanding);
+  const ledger = allocateFinancialPayment({
+    previousBalance: input.previousOutstanding,
+    delayBalance: input.currentOutstanding,
+    excessMileageBalance: input.excessMileageOutstanding,
+    otherBalance: input.otherOutstanding,
+    payment: input.paymentAmount,
+  });
 
   return {
-    appliedToPrevious: Number(appliedToPrevious.toFixed(2)),
-    appliedToCurrent: Number(appliedToCurrent.toFixed(2)),
-    unapplied: Number((remainingPayment - appliedToCurrent).toFixed(2)),
-    previousRemaining: Number((previousOutstanding - appliedToPrevious).toFixed(2)),
-    currentRemaining: Number((currentOutstanding - appliedToCurrent).toFixed(2)),
+    appliedToPrevious: Number(ledger.paymentToPrevious),
+    appliedToCurrent: Number(ledger.paymentToDelay),
+    appliedToExcessMileage: Number(ledger.paymentToExcessMileage),
+    appliedToOther: Number(ledger.paymentToOther),
+    unapplied: Number(ledger.unappliedPayment),
+    previousRemaining: Number(ledger.previousBalance),
+    currentRemaining: Number(ledger.delayBalance),
+    excessMileageRemaining: Number(ledger.excessMileageBalance),
+    otherRemaining: Number(ledger.otherBalance),
   };
 }

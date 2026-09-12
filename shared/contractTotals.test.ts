@@ -11,10 +11,12 @@ describe("calculateContractTotals", () => {
       asOf: new Date("2026-08-31T12:00:00Z"),
     });
 
-    expect(totals).toEqual({
+    expect(totals).toMatchObject({
       baseTotal: "300.00",
+      contractReferenceTotal: "300.00",
       delayDays: 3,
       delayTotal: "150.00",
+      amountDueThroughDate: "450.00",
       grandTotal: "450.00",
     });
   });
@@ -29,6 +31,8 @@ describe("calculateContractTotals", () => {
       asOf: new Date("2026-09-05T12:00:00Z"),
     });
 
+    expect(totals.contractReferenceTotal).toBe("300.00");
+    expect(totals.amountDueThroughDate).toBe("400.00");
     expect(totals.delayDays).toBe(2);
     expect(totals.delayTotal).toBe("100.00");
     expect(totals.grandTotal).toBe("400.00");

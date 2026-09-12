@@ -21,6 +21,7 @@ import { calculateCloseSettlement } from "../shared/closeSettlement";
 import { calculateSuspensionSettlement, statusAfterSuspendedSettlement } from "../shared/suspensionSettlement";
 import { canChargeMonthlyAuthorizationFee } from "../shared/contractScope";
 import { isOtherRevenueReason, paymentReasonLabels } from "../shared/paymentReasons";
+import { calculateMileageCharge } from "../shared/mileageCharges";
 import { buildOfficeInsights } from "../shared/officeInsights";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -163,7 +164,7 @@ export async function listContracts(status?: "active" | "overdue" | "suspended" 
   const paymentRows = ids.length ? await db.select().from(payments).where(inArray(payments.contractId, ids)).orderBy(desc(payments.createdAt)) : [];
   return rows.map((row) => {
     const totals = calculateContractTotals({ baseTotal: row.contract.totalAmount, expectedReturnDate: row.contract.expectedReturnDate, rentalAmount: row.contract.rentalAmount, type: row.contract.type, actualReturnDate: row.contract.actualReturnDate });
-    const balances = calculateContractBalances({ baseTotal: totals.baseTotal, delayTotal: totals.delayTotal, paidAmount: row.contract.paidAmount });
+    const balances = calculateContractBalances({ baseTotal: totals.baseTotal, delayTotal: totals.delayTotal, paidAmount: row.contract.paidAmount, excessMileageBalance: row.contract.excessMileageAmount });
     return { ...row, totals, ...balances };
   });
 }
@@ -251,7 +252,7 @@ export async function getDashboardSummary() {
     db.select({ amount: payments.amount, method: payments.method, plateNumber: vehicles.plateNumber, createdAt: payments.createdAt }).from(payments).leftJoin(contracts, eq(payments.contractId, contracts.id)).leftJoin(vehicles, eq(contracts.vehicleId, vehicles.id)).where(sql`date(${payments.createdAt}) = curdate()`).orderBy(desc(payments.createdAt)),
   ]);
   const financialRows = await db.select({ contract: contracts }).from(contracts).where(inArray(contracts.status, ["active", "overdue"]));
-  const breakdown = calculateDashboardOutstandingBreakdown(financialRows.map(({ contract }) => ({ totalAmount: contract.totalAmount, expectedReturnDate: contract.expectedReturnDate, rentalAmount: contract.rentalAmount, type: contract.type, actualReturnDate: contract.actualReturnDate, paidAmount: contract.paidAmount })));
+  const breakdown = calculateDashboardOutstandingBreakdown(financialRows.map(({ contract }) => ({ totalAmount: contract.totalAmount, expectedReturnDate: contract.expectedReturnDate, rentalAmount: contract.rentalAmount, type: contract.type, actualReturnDate: contract.actualReturnDate, paidAmount: contract.paidAmount, excessMileageAmount: contract.excessMileageAmount })));
   return { activeContracts: Number(active[0]?.count ?? 0), overdueContracts: Number(overdue[0]?.count ?? 0), externalActiveContracts: Number(externalActive[0]?.count ?? 0), externalOverdueContracts: Number(externalOverdue[0]?.count ?? 0), suspendedContracts: Number(suspended[0]?.count ?? 0), availableVehicles: Number(available[0]?.count ?? 0), totalVehicles: Number(totalVehicles[0]?.count ?? 0), rentedVehicles: Number(rentedVehicles[0]?.count ?? 0), outstandingAmount: String(outstanding[0]?.amount ?? "0.00"), previousOutstanding: breakdown.previousOutstanding, delayOutstanding: breakdown.delayOutstanding, currentOutstanding: breakdown.currentOutstanding, grandOutstanding: breakdown.grandOutstanding, maintenanceVehicles: Number(maintenance[0]?.count ?? 0), oilDueVehicles: Number(oilDue[0]?.count ?? 0), expiringDocuments: Number(expiringDocuments[0]?.count ?? 0), todayPayments: String(todayPayments[0]?.amount ?? "0.00"), todayPaymentDetails: todayPaymentDetails.map((payment) => ({ amount: String(payment.amount ?? "0.00"), method: payment.method, plateNumber: payment.plateNumber ?? "غير معروف", createdAt: payment.createdAt })) };
 }
 
@@ -376,21 +377,22 @@ export async function recordContractOperation(input: { contractId?: number; cont
   let operationDetails = input.details;
   const operationAt = new Date();
   let statusAfterPayment: "active" | "overdue" | null = null;
+  let mileageChargeAmount = 0;
   let extensionPaymentAllocation: ReturnType<typeof allocatePayment> | null = null;
   const extensionPaymentTotal = input.operation === "extension" ? Number(input.extensionPaymentAmount ?? 0) : 0;
   if (input.operation === "extension" && extensionPaymentTotal > 0 && input.extensionPaymentMethod === "mixed" && (Number(input.extensionPaymentCashAmount) <= 0 || Number(input.extensionPaymentNetworkAmount) <= 0 || Number(input.extensionPaymentCashAmount) + Number(input.extensionPaymentNetworkAmount) !== extensionPaymentTotal)) throw new Error("يجب أن يساوي مجموع كاش وشبكة دفعة التمديد مبلغ الدفعة");
   if (input.operation === "extension") {
     const extensionTotals = calculateContractTotals({ baseTotal: contract.totalAmount, expectedReturnDate: contract.expectedReturnDate, rentalAmount: contract.rentalAmount, type: contract.type, actualReturnDate: operationAt });
-    const extensionBalances = calculateContractBalances({ baseTotal: extensionTotals.baseTotal, delayTotal: extensionTotals.delayTotal, paidAmount: contract.paidAmount });
+    const extensionBalances = calculateContractBalances({ baseTotal: extensionTotals.baseTotal, delayTotal: extensionTotals.delayTotal, paidAmount: contract.paidAmount, excessMileageBalance: contract.excessMileageAmount });
     if (Number(extensionBalances.grandOutstanding) > 0 && extensionPaymentTotal < Number(extensionBalances.grandOutstanding)) throw new Error(`لا يمكن تمديد العقد قبل سداد المتأخرات. المتبقي السابق ${extensionBalances.previousOutstanding} ر.س؛ الحالي ${extensionBalances.currentOutstanding} ر.س؛ الإجمالي المطلوب للسداد ${extensionBalances.grandOutstanding} ر.س`);
     if (extensionPaymentTotal > 0) {
-      extensionPaymentAllocation = allocatePayment({ paymentAmount: extensionPaymentTotal, previousOutstanding: Number(extensionBalances.previousOutstanding), currentOutstanding: Number(extensionBalances.currentOutstanding) });
-      operationDetails = `دفعة مع التمديد: السابق ${extensionPaymentAllocation.appliedToPrevious.toFixed(2)} ر.س؛ الحالي ${extensionPaymentAllocation.appliedToCurrent.toFixed(2)} ر.س${extensionPaymentAllocation.unapplied > 0 ? `؛ رصيد زائد ${extensionPaymentAllocation.unapplied.toFixed(2)} ر.س` : ""}`;
+      extensionPaymentAllocation = allocatePayment({ paymentAmount: extensionPaymentTotal, previousOutstanding: Number(extensionBalances.previousOutstanding), currentOutstanding: Number(extensionBalances.currentOutstanding), excessMileageOutstanding: Number(extensionBalances.excessMileageOutstanding) });
+      operationDetails = `دفعة مع التمديد: السابق ${extensionPaymentAllocation.appliedToPrevious.toFixed(2)} ر.س؛ الحالي ${extensionPaymentAllocation.appliedToCurrent.toFixed(2)} ر.س؛ الكيلومترات ${extensionPaymentAllocation.appliedToExcessMileage.toFixed(2)} ر.س${extensionPaymentAllocation.unapplied > 0 ? `؛ رصيد زائد ${extensionPaymentAllocation.unapplied.toFixed(2)} ر.س` : ""}`;
     }
   }
   let suspensionSettlement: ReturnType<typeof calculateSuspensionSettlement> | undefined;
   if (input.operation === "suspend") {
-    suspensionSettlement = calculateSuspensionSettlement({ baseTotal: contract.totalAmount, expectedReturnDate: contract.expectedReturnDate, suspendedAt: operationAt, rentalAmount: contract.rentalAmount, type: contract.type, paidAmount: contract.paidAmount });
+    suspensionSettlement = calculateSuspensionSettlement({ baseTotal: contract.totalAmount, expectedReturnDate: contract.expectedReturnDate, suspendedAt: operationAt, rentalAmount: contract.rentalAmount, type: contract.type, paidAmount: contract.paidAmount, excessMileageBalance: Number(contract.excessMileageAmount ?? 0) + mileageChargeAmount });
     if (!input.followUpDate) throw new Error("حدد التاريخ المتوقع للسداد أو إعادة التواصل");
     operationDetails = `تسوية التعليق حتى ${operationAt}: خصم الأيام غير المستخدمة ${suspensionSettlement.remainingDays} يوم بقيمة ${suspensionSettlement.unusedValue} ر.س؛ المستحق حتى التعليق ${suspensionSettlement.amountDueThroughSuspension} ر.س؛ المتبقي السابق ${suspensionSettlement.balances.previousOutstanding} ر.س؛ المتبقي الحالي ${suspensionSettlement.balances.currentOutstanding} ر.س؛ موعد المتابعة ${input.followUpDate}${input.details ? `؛ ${input.details}` : ""}`;
   }
@@ -399,9 +401,9 @@ export async function recordContractOperation(input: { contractId?: number; cont
     if (input.paymentMethod === "mixed" && (!Number(input.paymentCashAmount) || !Number(input.paymentNetworkAmount) || Number(input.paymentCashAmount) < 0 || Number(input.paymentNetworkAmount) < 0 || Number(input.paymentCashAmount) + Number(input.paymentNetworkAmount) !== Number(input.amount))) throw new Error("يجب أن يساوي مجموع الكاش والشبكة مبلغ الدفعة");
     const reasonLabel = input.paymentReason ? paymentReasonLabels[input.paymentReason as keyof typeof paymentReasonLabels] ?? input.paymentReason : undefined;
     const totals = calculateContractTotals({ baseTotal: contract.totalAmount, expectedReturnDate: contract.expectedReturnDate, rentalAmount: contract.rentalAmount, type: contract.type, actualReturnDate: contract.actualReturnDate });
-    const balances = calculateContractBalances({ baseTotal: totals.baseTotal, delayTotal: totals.delayTotal, paidAmount: contract.paidAmount });
-    const allocation = otherRevenuePayment ? null : allocatePayment({ paymentAmount: Number(input.amount), previousOutstanding: Number(balances.previousOutstanding), currentOutstanding: Number(balances.currentOutstanding) });
-    const allocationNote = allocation ? `تخصيص الدفعة: السابق ${allocation.appliedToPrevious.toFixed(2)} ر.س؛ الحالي ${allocation.appliedToCurrent.toFixed(2)} ر.س${allocation.unapplied > 0 ? `؛ رصيد زائد ${allocation.unapplied.toFixed(2)} ر.س` : ""}` : "إيراد آخر مستقل؛ لا يخصم من المتبقي أو التأخير";
+    const balances = calculateContractBalances({ baseTotal: totals.baseTotal, delayTotal: totals.delayTotal, paidAmount: contract.paidAmount, excessMileageBalance: contract.excessMileageAmount });
+    const allocation = otherRevenuePayment ? null : allocatePayment({ paymentAmount: Number(input.amount), previousOutstanding: Number(balances.previousOutstanding), currentOutstanding: Number(balances.currentOutstanding), excessMileageOutstanding: Number(balances.excessMileageOutstanding) });
+    const allocationNote = allocation ? `تخصيص الدفعة: السابق ${allocation.appliedToPrevious.toFixed(2)} ر.س؛ الحالي ${allocation.appliedToCurrent.toFixed(2)} ر.س؛ الكيلومترات ${allocation.appliedToExcessMileage.toFixed(2)} ر.س${allocation.unapplied > 0 ? `؛ رصيد زائد ${allocation.unapplied.toFixed(2)} ر.س` : ""}` : "إيراد آخر مستقل؛ لا يخصم من المتبقي أو التأخير";
     operationDetails = [operationDetails, reasonLabel ? `سبب الدفعة: ${reasonLabel}` : undefined, allocationNote, input.paymentMethod === "mixed" ? `دفع مختلط: كاش ${Number(input.paymentCashAmount).toFixed(2)} ر.س؛ شبكة ${Number(input.paymentNetworkAmount).toFixed(2)} ر.س` : undefined].filter(Boolean).join("؛ ");
     if (!otherRevenuePayment) {
       statusAfterPayment = statusAfterSuspendedSettlement({ status: contract.status, outstanding: Math.max(0, Number(balances.grandOutstanding) - Number(input.amount)), expectedReturnDate: contract.expectedReturnDate, now: operationAt });
@@ -416,7 +418,21 @@ export async function recordContractOperation(input: { contractId?: number; cont
       if (currentVehicle[0] && !isMileageAdvanceValid(currentVehicle[0].mileage, input.vehicleMileage)) throw new Error("قراءة العداد الجديدة لا يمكن أن تكون أقل من القراءة الحالية");
       await db.update(vehicles).set({ mileage: input.vehicleMileage }).where(eq(vehicles.id, targetVehicleId));
       operationDetails = `${operationDetails ? `${operationDetails}؛ ` : ""}قراءة العداد: ${input.vehicleMileage.toLocaleString()} كم`;
+      if (["vehicle_swap", "close", "return", "suspend"].includes(input.operation) && Number(contract.startMileage) > 0) {
+        const scope = contract.contractScope === "domestic_limited" ? "internal" : contract.contractScope === "international" ? "international" : "domestic";
+        const mileage = calculateMileageCharge({ startMileage: contract.startMileage, endMileage: input.vehicleMileage, rentalDays: contract.days, scope });
+        mileageChargeAmount = Number(mileage.amount);
+        if (mileageChargeAmount > 0) {
+          const nextMileageBalance = Number(contract.excessMileageAmount ?? 0) + mileageChargeAmount;
+          await db.update(contracts).set({ excessMileageAmount: nextMileageBalance.toFixed(2) }).where(eq(contracts.id, contractId));
+          operationDetails = `${operationDetails}؛ كيلومترات زائدة ${mileage.excess} كم × ${mileage.rate.toFixed(2)} ر.س = ${mileage.amount} ر.س`;
+        }
+      }
     }
+  }
+  if (input.operation === "suspend" && mileageChargeAmount > 0) {
+    suspensionSettlement = calculateSuspensionSettlement({ baseTotal: contract.totalAmount, expectedReturnDate: contract.expectedReturnDate, suspendedAt: operationAt, rentalAmount: contract.rentalAmount, type: contract.type, paidAmount: contract.paidAmount, excessMileageBalance: Number(contract.excessMileageAmount ?? 0) + mileageChargeAmount });
+    operationDetails = `تسوية التعليق حتى ${operationAt}: خصم الأيام غير المستخدمة ${suspensionSettlement.remainingDays} يوم بقيمة ${suspensionSettlement.unusedValue} ر.س؛ المستحق حتى التعليق ${suspensionSettlement.amountDueThroughSuspension} ر.س؛ المتبقي السابق ${suspensionSettlement.balances.previousOutstanding} ر.س؛ المتبقي الحالي ${suspensionSettlement.balances.currentOutstanding} ر.س؛ الكيلومترات ${suspensionSettlement.balances.excessMileageOutstanding} ر.س؛ موعد المتابعة ${input.followUpDate}${input.details ? `؛ ${input.details}` : ""}`;
   }
   if (input.operation === "additional_fee") {
     if (contract.contractScope !== "international") throw new Error("رسوم التفويض الدولي متاحة للعقد الخارجي الدولي فقط");
@@ -442,25 +458,25 @@ export async function recordContractOperation(input: { contractId?: number; cont
       replacementIsAvailable = Boolean(replacement[0]);
     }
     const swapTotals = calculateContractTotals({ baseTotal: contract.totalAmount, expectedReturnDate: contract.expectedReturnDate, rentalAmount: contract.rentalAmount, type: contract.type, actualReturnDate: contract.actualReturnDate });
-    const swapBalances = calculateContractBalances({ baseTotal: swapTotals.baseTotal, delayTotal: swapTotals.delayTotal, paidAmount: contract.paidAmount });
+    const swapBalances = calculateContractBalances({ baseTotal: swapTotals.baseTotal, delayTotal: swapTotals.delayTotal, paidAmount: contract.paidAmount, excessMileageBalance: contract.excessMileageAmount });
     if (Number(swapBalances.grandOutstanding) > Number(contract.totalAmount) / 3) throw new Error(`لا يمكن تبديل السيارة: المستحقات ${swapBalances.grandOutstanding} ر.س تتجاوز ثلث قيمة العقد`);
     const swapValidation = validateVehicleSwap(contract.vehicleId, input.vehicleId, replacementIsAvailable);
     if (!swapValidation.ok) throw new Error(swapValidation.reason);
     previousVehicleId = contract.vehicleId;
     const totals = calculateContractTotals({ baseTotal: contract.totalAmount, expectedReturnDate: contract.expectedReturnDate, rentalAmount: contract.rentalAmount, type: contract.type, actualReturnDate: contract.actualReturnDate });
-    const balances = calculateContractBalances({ baseTotal: totals.baseTotal, delayTotal: totals.delayTotal, paidAmount: contract.paidAmount });
+    const balances = calculateContractBalances({ baseTotal: totals.baseTotal, delayTotal: totals.delayTotal, paidAmount: contract.paidAmount, excessMileageBalance: contract.excessMileageAmount });
     operationDetails = `تبديل السيارة: ${contract.vehicleId} ← ${input.vehicleId}؛ نقل الحسابات: المدفوع ${Number(contract.paidAmount).toFixed(2)} ر.س، السابق ${balances.previousOutstanding} ر.س، التأخير ${balances.currentOutstanding} ر.س، الإجمالي ${balances.grandOutstanding} ر.س${contract.contractScope === "international" ? `؛ رسم تفويض دولي جديد ${Number(input.amount).toFixed(2)} ر.س` : ""}${input.details ? `؛ ${input.details}` : ""}`;
   }
   let returnSettlement: ReturnType<typeof calculateReturnSettlement> | undefined;
   let closeSettlement: ReturnType<typeof calculateCloseSettlement> | undefined;
   if (input.operation === "close") {
-    closeSettlement = calculateCloseSettlement({ baseTotal: contract.totalAmount, expectedReturnDate: contract.expectedReturnDate, closedAt: operationAt, rentalAmount: contract.rentalAmount, type: contract.type, paidAmount: contract.paidAmount });
+    closeSettlement = calculateCloseSettlement({ baseTotal: contract.totalAmount, expectedReturnDate: contract.expectedReturnDate, closedAt: operationAt, rentalAmount: contract.rentalAmount, type: contract.type, paidAmount: contract.paidAmount, excessMileageBalance: Number(contract.excessMileageAmount ?? 0) + mileageChargeAmount });
     operationDetails = `تسوية الإغلاق حتى ${operationAt}: المستحق حتى يوم الإغلاق ${closeSettlement.amountDueThroughClose} ر.س؛ الأيام غير المستخدمة ${closeSettlement.remainingDays} يوم بقيمة ${closeSettlement.unusedValue} ر.س؛ الرصيد السابق ${closeSettlement.balances.previousOutstanding} ر.س؛ الرصيد الحالي ${closeSettlement.balances.currentOutstanding} ر.س${closeSettlement.shouldRecordReturn ? `؛ رصيد دائن للعميل ${closeSettlement.customerCredit} ر.س؛ رُحّلت السيارة إلى سجل الاسترجاعات` : ""}${input.details ? `؛ ${input.details}` : ""}`;
     if (!closeSettlement.canClose || Number(closeSettlement.balances.grandOutstanding) > 0) throw new Error(`لا يمكن إغلاق العقد: يوجد مبلغ غير مسدد قدره ${closeSettlement.balances.grandOutstanding} ر.س. سجّل الدفعة أولاً أو علّق العقد.`);
   }
   if (input.operation === "return") {
     const returnTotals = calculateContractTotals({ baseTotal: contract.totalAmount, expectedReturnDate: contract.expectedReturnDate, rentalAmount: contract.rentalAmount, type: contract.type, actualReturnDate: operationAt });
-    const returnBalances = calculateContractBalances({ baseTotal: returnTotals.baseTotal, delayTotal: returnTotals.delayTotal, paidAmount: contract.paidAmount });
+    const returnBalances = calculateContractBalances({ baseTotal: returnTotals.baseTotal, delayTotal: returnTotals.delayTotal, paidAmount: contract.paidAmount, excessMileageBalance: Number(contract.excessMileageAmount ?? 0) + mileageChargeAmount });
     if (Number(returnBalances.grandOutstanding) > 0) throw new Error(`لا يمكن استرجاع العقد: يوجد مبلغ غير مسدد قدره ${returnBalances.grandOutstanding} ر.س. سجّل الدفعة أولاً أو علّق العقد.`);
     returnSettlement = calculateReturnSettlement({ expectedReturnDate: contract.expectedReturnDate, returnedAt: operationAt, rentalAmount: contract.rentalAmount, type: contract.type });
     operationDetails = `استرجاع مبكر: الأيام المتبقية ${returnSettlement.remainingDays} يوم × ${returnSettlement.dailyRate} ر.س = ${returnSettlement.remainingValue} ر.س؛ المتبقي السابق ${returnBalances.previousOutstanding} ر.س؛ المتبقي الحالي ${returnBalances.currentOutstanding} ر.س${input.details ? `؛ ${input.details}` : ""}`;
@@ -626,7 +642,7 @@ export async function createContract(input: { contractNumber?: string; customerI
   if (oilStatus.due && !input.oilOverrideAcknowledged && !hasOilOverride(input.notes)) throw new Error(`${mileageWarningMessage(oilStatus)}؛ لا يمكن إنشاء العقد إلا بعد تأكيد المسؤولية الشخصية`);
   const contractNumber = input.contractNumber?.trim() || await nextContractNumber();
   const { vehicleMileage: _vehicleMileage, oilOverrideAcknowledged: _oilOverrideAcknowledged, initialCashAmount: _initialCashAmount, initialNetworkAmount: _initialNetworkAmount, ...contractInput } = input;
-  const result = await db.insert(contracts).values({ ...contractInput, contractNumber, startDate: new Date(input.startDate), expectedReturnDate: new Date(input.expectedReturnDate), paidAmount: input.paidAmount ?? "0", createdBy: input.createdBy ?? null });
+  const result = await db.insert(contracts).values({ ...contractInput, startMileage: input.vehicleMileage, contractNumber, startDate: new Date(input.startDate), expectedReturnDate: new Date(input.expectedReturnDate), paidAmount: input.paidAmount ?? "0", createdBy: input.createdBy ?? null });
   const contractId = Number(result[0]?.insertId);
   await db.update(vehicles).set({ status: "rented", ...(input.vehicleMileage !== undefined ? { mileage: input.vehicleMileage } : {}) }).where(eq(vehicles.id, input.vehicleId!));
   const contractNotes = `${input.notes?.trim() ?? ""}${input.notes?.trim() ? "؛ " : ""}قراءة العداد عند فتح العقد: ${input.vehicleMileage.toLocaleString()} كم${oilStatus.due ? "؛ تم إنشاء العقد على مسؤولية الموظف بعد تنبيه غيار الزيت" : ""}`.trim();
@@ -664,8 +680,9 @@ export async function getOfficeInsights() {
 export async function getDashboardAlerts() {
   const db = await getDb(); if (!db) return [];
   await db.update(contracts).set({ status: "overdue" }).where(and(eq(contracts.status, "active"), sql`${contracts.expectedReturnDate} < curdate()`));
-  const alerts: Array<{ type: "overdue" | "maintenance" | "document"; title: string; description: string; severity: "warning" | "danger" }> = [];
+  const alerts: Array<{ type: "overdue" | "maintenance" | "document" | "monthly_expiry"; title: string; description: string; severity: "warning" | "danger" }> = [];
   const overdue = await db.select({ contractNumber: contracts.contractNumber, expectedReturnDate: contracts.expectedReturnDate }).from(contracts).where(eq(contracts.status, "overdue")).orderBy(desc(contracts.expectedReturnDate));
+  const monthlyExpiring = await db.select({ contractNumber: contracts.contractNumber, expectedReturnDate: contracts.expectedReturnDate }).from(contracts).where(and(eq(contracts.type, "monthly"), inArray(contracts.status, ["active", "overdue"]), sql`datediff(${contracts.expectedReturnDate}, curdate()) between 0 and 4`)).orderBy(contracts.expectedReturnDate);
   const maintenance = await db.select({ plateNumber: vehicles.plateNumber, make: vehicles.make, model: vehicles.model }).from(vehicles).where(eq(vehicles.status, "maintenance")).orderBy(desc(vehicles.updatedAt));
   const oilCandidates = await db.select({ plateNumber: vehicles.plateNumber, mileage: vehicles.mileage, lastOilChangeMileage: vehicles.lastOilChangeMileage, lastOilChangeDate: vehicles.lastOilChangeDate, oilChangeInterval: vehicles.oilChangeInterval }).from(vehicles);
   const oilDue = oilCandidates.filter((vehicle) => calculateOilMaintenance({ currentMileage: vehicle.mileage, lastOilChangeMileage: vehicle.lastOilChangeMileage, oilChangeInterval: vehicle.oilChangeInterval, lastOilChangeDate: vehicle.lastOilChangeDate }).due);
@@ -673,6 +690,7 @@ export async function getDashboardAlerts() {
   const horizon = Date.now() + 30 * 86400000;
   const documents: Array<{ plateNumber: string; label: string; value: Date }> = [];
   documentedVehicles.forEach((vehicle) => { ([['التأمين', vehicle.insuranceExpiryDate], ['الفحص الدوري', vehicle.inspectionExpiryDate], ['الاستمارة', vehicle.registrationExpiryDate] ] as const).forEach(([label, value]) => { if (value) { const expiry = new Date(value); if (expiry.getTime() <= horizon) documents.push({ plateNumber: vehicle.plateNumber, label, value: expiry }); } }); });
+  monthlyExpiring.slice(0, 10).forEach((contract) => alerts.push({ type: "monthly_expiry", title: `العقد الشهري ${contract.contractNumber} يقترب من الانتهاء`, description: `ينتهي في ${contract.expectedReturnDate}؛ تواصل مع العميل الآن لتأكيد تمديد شهر جديد أو موعد التسليم.`, severity: "warning" }));
   overdue.slice(0, 10).forEach((contract) => alerts.push({ type: "overdue", title: `العقد ${contract.contractNumber} متأخر`, description: `تاريخ التسليم المتوقع ${contract.expectedReturnDate}`, severity: "danger" }));
   maintenance.slice(0, 10).forEach((vehicle) => alerts.push({ type: "maintenance", title: `السيارة ${vehicle.plateNumber} تحتاج صيانة`, description: `${vehicle.make} ${vehicle.model} غير متاحة للتأجير`, severity: "warning" }));
   oilDue.slice(0, 10).forEach((vehicle) => { const oilStatus = calculateOilMaintenance({ currentMileage: vehicle.mileage, lastOilChangeMileage: vehicle.lastOilChangeMileage, oilChangeInterval: vehicle.oilChangeInterval, lastOilChangeDate: vehicle.lastOilChangeDate }); alerts.push({ type: "maintenance", title: `موعد تغيير زيت السيارة ${vehicle.plateNumber}`, description: `${mileageWarningMessage(oilStatus)}؛ العداد الحالي ${vehicle.mileage.toLocaleString()} كم`, severity: "warning" }); });

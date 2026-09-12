@@ -15,6 +15,7 @@ export function calculateCloseSettlement(input: {
   rentalAmount: string | number;
   type: "daily" | "monthly";
   paidAmount: string | number;
+  excessMileageBalance?: string | number;
 }) {
   const earlySettlement = calculateReturnSettlement({
     expectedReturnDate: input.expectedReturnDate,
@@ -35,9 +36,10 @@ export function calculateCloseSettlement(input: {
     baseTotal: totals.baseTotal,
     delayTotal: totals.delayTotal,
     paidAmount: input.paidAmount,
+    excessMileageBalance: input.excessMileageBalance,
   });
   const paidAmount = Math.max(0, Number(input.paidAmount) || 0);
-  const amountDueThroughClose = Number(totals.grandTotal);
+  const amountDueThroughClose = Number(totals.grandTotal) + Math.max(0, Number(input.excessMileageBalance) || 0);
   const customerCredit = Math.min(paidAmount, Math.max(0, paidAmount - amountDueThroughClose));
   const hasSurplusPaidDays = earlySettlement.remainingDays > 0 && paidAmount > Number(totals.baseTotal);
 

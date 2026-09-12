@@ -12,10 +12,10 @@ export function statusAfterSuspendedSettlement(input: { status: "active" | "over
 }
 
 /** يثبت رصيد العقد عند التعليق ويخصم الأيام المستقبلية غير المستخدمة من المستحق. */
-export function calculateSuspensionSettlement(input: { baseTotal: string | number; expectedReturnDate: Date | string; suspendedAt: Date | string; rentalAmount: string | number; type: "daily" | "monthly"; paidAmount: string | number }) {
+export function calculateSuspensionSettlement(input: { baseTotal: string | number; expectedReturnDate: Date | string; suspendedAt: Date | string; rentalAmount: string | number; type: "daily" | "monthly"; paidAmount: string | number; excessMileageBalance?: string | number }) {
   const unused = calculateReturnSettlement({ expectedReturnDate: input.expectedReturnDate, returnedAt: input.suspendedAt, rentalAmount: input.rentalAmount, type: input.type });
   const adjustedBase = Math.max(0, Number(input.baseTotal) - Number(unused.remainingValue));
   const totals = calculateContractTotals({ baseTotal: adjustedBase, expectedReturnDate: input.expectedReturnDate, rentalAmount: input.rentalAmount, type: input.type, actualReturnDate: input.suspendedAt, asOf: new Date(input.suspendedAt) });
-  const balances = calculateContractBalances({ baseTotal: totals.baseTotal, delayTotal: totals.delayTotal, paidAmount: input.paidAmount });
+  const balances = calculateContractBalances({ baseTotal: totals.baseTotal, delayTotal: totals.delayTotal, paidAmount: input.paidAmount, excessMileageBalance: input.excessMileageBalance });
   return { remainingDays: unused.remainingDays, unusedValue: unused.remainingValue, adjustedBase: Number(totals.baseTotal).toFixed(2), amountDueThroughSuspension: Number(totals.grandTotal).toFixed(2), totals, balances };
 }

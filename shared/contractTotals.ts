@@ -16,8 +16,10 @@ export function calculateContractTotals(input: {
   const delayTotal = Number(late.amount);
   return {
     baseTotal: formatMoney(baseTotal),
+    contractReferenceTotal: formatMoney(baseTotal),
     delayDays: late.days,
     delayTotal: formatMoney(delayTotal),
+    amountDueThroughDate: formatMoney(baseTotal + delayTotal),
     grandTotal: formatMoney(baseTotal + delayTotal),
   };
 }

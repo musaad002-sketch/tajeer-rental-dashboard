@@ -79,6 +79,8 @@ export const contracts = mysqlTable("contracts", {
   actualReturnDate: date("actualReturnDate"),
   rentalAmount: decimal("rentalAmount", { precision: 10, scale: 2 }).notNull(),
   days: int("days").default(1).notNull(),
+  startMileage: int("startMileage").default(0).notNull(),
+  excessMileageAmount: decimal("excessMileageAmount", { precision: 10, scale: 2 }).default("0").notNull(),
   totalAmount: decimal("totalAmount", { precision: 10, scale: 2 }).notNull(),
   paidAmount: decimal("paidAmount", { precision: 10, scale: 2 }).default("0").notNull(),
   notes: text("notes"),
