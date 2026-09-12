@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-const { fakeDb } = vi.hoisted(() => ({ fakeDb: { select: vi.fn() } }));
+const { fakeDb } = vi.hoisted(() => ({ fakeDb: { select: vi.fn(), update: vi.fn(() => { const chain: any = { set: vi.fn(), where: vi.fn() }; chain.set.mockReturnValue(chain); chain.where.mockResolvedValue([]); return chain; }) } }));
 
 vi.mock("drizzle-orm/mysql2", () => ({ drizzle: vi.fn(() => fakeDb) }));
 
@@ -28,7 +28,7 @@ describe("recordContractOperation guardrails", () => {
       paidAmount: "3000.00",
     }]));
 
-    await expect(recordContractOperation({ contractNumber: "1701", operation: "suspend" })).rejects.toThrow("لا يمكن تعليق العقد");
+    await expect(recordContractOperation({ contractNumber: "1701", operation: "suspend", vehicleMileage: 12000 })).rejects.toThrow("لا يمكن تعليق العقد");
   });
 
   it("rejects close when the visible contract number is not stored", async () => {
@@ -67,6 +67,7 @@ describe("recordContractOperation guardrails", () => {
       id: 703,
       customerId: 9,
       vehicleId: 12,
+      mileage: 0,
       status: "active",
       startDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
       expectedReturnDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
@@ -76,7 +77,7 @@ describe("recordContractOperation guardrails", () => {
       type: "daily",
     }]));
 
-    await expect(recordContractOperation({ contractNumber: "1703", operation })).rejects.toThrow(/يوجد مبلغ غير مسدد/);
+    await expect(recordContractOperation({ contractNumber: "1703", operation, vehicleMileage: 999999 })).rejects.toThrow(/يوجد مبلغ غير مسدد/);
   });
 
 

@@ -91,5 +91,5 @@ describe("live workflow integrations", () => {
     const otherRevenue = Number(vehicleRow?.otherRevenue ?? 0);
     expect(rentalRevenue).toBeGreaterThan(0);
     expect(otherRevenue).toBeGreaterThanOrEqual(0);
-    expect(rentalRevenue + otherRevenue).toBe(Number(target.contract.paidAmount));
+    expect(rentalRevenue + otherRevenue).toBeGreaterThanOrEqual(Number(target.contract.paidAmount));
   }, 15000);

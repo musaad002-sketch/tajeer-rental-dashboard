@@ -28,7 +28,7 @@ describe("operations.record", () => {
     recordMock.mockClear();
     createMock.mockClear();
     const caller = appRouter.createCaller(context);
-    await caller.contracts.create({ customerId: 1, vehicleId: 1, type: "daily", startDate: "2026-08-28", expectedReturnDate: "2026-08-30", rentalAmount: "180", days: 2, totalAmount: "360", notes: "تسليم المفتاح عند الإرجاع" });
+    await caller.contracts.create({ customerId: 1, vehicleId: 1, vehicleMileage: 90000, type: "daily", startDate: "2026-08-28", expectedReturnDate: "2026-08-30", rentalAmount: "180", days: 2, totalAmount: "360", notes: "تسليم المفتاح عند الإرجاع" });
     expect(createMock).toHaveBeenCalledOnce();
     expect(createMock).toHaveBeenCalledWith(expect.objectContaining({ notes: "تسليم المفتاح عند الإرجاع", createdBy: 7 }));
     expect(recordMock).not.toHaveBeenCalled();
@@ -40,9 +40,9 @@ describe("operations.record", () => {
     recordMock.mockClear();
     const caller = appRouter.createCaller(context);
     await caller.operations.record({ contractNumber: "1011", operation: "extension", extensionDays: 2, details: "تمديد يومين" });
-    await caller.operations.record({ contractNumber: "1011", operation: "return", details: "استلام السيارة" });
+    await caller.operations.record({ contractNumber: "1011", operation: "return", vehicleMileage: 90500, details: "استلام السيارة" });
     expect(recordMock).toHaveBeenNthCalledWith(1, { contractNumber: "1011", operation: "extension", extensionDays: 2, details: "تمديد يومين", createdBy: 7 });
-    expect(recordMock).toHaveBeenNthCalledWith(2, { contractNumber: "1011", operation: "return", details: "استلام السيارة", createdBy: 7 });
+    expect(recordMock).toHaveBeenNthCalledWith(2, { contractNumber: "1011", operation: "return", vehicleMileage: 90500, details: "استلام السيارة", createdBy: 7 });
   });
 
   it("uses the missing-contract prompt only when neither identifier is supplied", async () => {
@@ -76,7 +76,7 @@ describe("operations.record", () => {
     recordMock.mockReset();
     recordMock.mockRejectedValueOnce(new Error("العقد غير موجود في قاعدة البيانات"));
     const caller = appRouter.createCaller(context);
-    await expect(caller.operations.record({ contractNumber: "__NOT_REGISTERED__", operation: "return" })).rejects.toThrow("العقد غير موجود في قاعدة البيانات");
+    await expect(caller.operations.record({ contractNumber: "__NOT_REGISTERED__", operation: "return", vehicleMileage: 90500 })).rejects.toThrow("العقد غير موجود في قاعدة البيانات");
   });
 
 
@@ -114,6 +114,6 @@ it("passes mixed cash and network payment amounts as one operation", async () =>
 it("passes contract scope when creating a contract", async () => {
   createMock.mockClear();
   const caller = appRouter.createCaller(context);
-  await caller.contracts.create({ customerId: 1, vehicleId: 1, type: "monthly", contractScope: "international", startDate: "2026-08-29", expectedReturnDate: "2026-09-28", rentalAmount: "3000", days: 30, totalAmount: "3000" });
+  await caller.contracts.create({ customerId: 1, vehicleId: 1, vehicleMileage: 90000, type: "monthly", contractScope: "international", startDate: "2026-08-29", expectedReturnDate: "2026-09-28", rentalAmount: "3000", days: 30, totalAmount: "3000" });
   expect(createMock).toHaveBeenCalledWith(expect.objectContaining({ contractScope: "international", createdBy: 7 }));
 });

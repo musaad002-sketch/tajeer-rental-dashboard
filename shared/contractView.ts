@@ -2,7 +2,7 @@ import { formatGregorianDate } from "./dateFormat";
 import { calculateContractTotals } from "./contractTotals";
 import { calculateContractBalances } from "./contractBalances";
 type ContractRow = {
-  contract: { contractNumber: string; expectedReturnDate: Date | string; status: string; totalAmount: string; paidAmount: string; rentalAmount?: string | number; type?: "daily" | "monthly"; actualReturnDate?: Date | string | null };
+  contract: { contractNumber: string; expectedReturnDate: Date | string; status: string; totalAmount: string; paidAmount: string; rentalAmount?: string | number; type?: "daily" | "monthly"; contractScope?: "domestic_limited" | "domestic_open" | "international" | null; actualReturnDate?: Date | string | null };
   customer?: { fullName: string } | null;
   vehicle?: { make: string; model: string; plateNumber?: string } | null;
 };
@@ -26,6 +26,7 @@ export function formatContractRows(rows: ContractRow[]) {
     previousOutstanding: balances.previousOutstanding,
     currentOutstanding: balances.currentOutstanding,
     grandOutstanding: balances.grandOutstanding,
+    contractScope: contract.contractScope,
   };
   });
 }

@@ -13,7 +13,7 @@ import { isExpenseIncludedInNetRevenue } from "../shared/expenseApproval";
 import { calculateContractBalances } from "../shared/contractBalances";
 import { calculateDashboardOutstandingBreakdown } from "../shared/dashboardOutstanding";
 import { addAdditionalFee, calculateRateAdjustedTotal } from "../shared/contractFinance";
-import { isMileageAdvanceValid } from "../shared/vehicleMaintenance";
+import { calculateOilMaintenance, hasOilOverride, isMileageAdvanceValid, mileageWarningMessage } from "../shared/vehicleMaintenance";
 import { allocatePayment } from "../shared/paymentAllocation";
 import { calculateReturnSettlement } from "../shared/returnSettlement";
 import { belongsToGeneralOutstanding } from "../shared/outstandingStatus";
@@ -230,11 +230,13 @@ export async function searchCustomerLedger(query: string) {
 
 export async function getDashboardSummary() {
   const db = await getDb();
-  if (!db) return { activeContracts: 0, overdueContracts: 0, suspendedContracts: 0, availableVehicles: 0, totalVehicles: 0, rentedVehicles: 0, outstandingAmount: "0.00", previousOutstanding: "0.00", delayOutstanding: "0.00", currentOutstanding: "0.00", grandOutstanding: "0.00", maintenanceVehicles: 0, oilDueVehicles: 0, expiringDocuments: 0, todayPayments: "0.00", todayPaymentDetails: [] };
+  if (!db) return { activeContracts: 0, overdueContracts: 0, externalActiveContracts: 0, externalOverdueContracts: 0, suspendedContracts: 0, availableVehicles: 0, totalVehicles: 0, rentedVehicles: 0, outstandingAmount: "0.00", previousOutstanding: "0.00", delayOutstanding: "0.00", currentOutstanding: "0.00", grandOutstanding: "0.00", maintenanceVehicles: 0, oilDueVehicles: 0, expiringDocuments: 0, todayPayments: "0.00", todayPaymentDetails: [] };
   await db.update(contracts).set({ status: "overdue" }).where(and(eq(contracts.status, "active"), sql`${contracts.expectedReturnDate} < curdate()`));
-  const [active, overdue, suspended, available, totalVehicles, rentedVehicles, outstanding, maintenance, oilDue, expiringDocuments, todayPayments] = await Promise.all([
+  const [active, overdue, externalActive, externalOverdue, suspended, available, totalVehicles, rentedVehicles, outstanding, maintenance, oilDue, expiringDocuments, todayPayments] = await Promise.all([
     db.select({ count: sql<number>`count(*)` }).from(contracts).where(eq(contracts.status, "active")),
     db.select({ count: sql<number>`count(*)` }).from(contracts).where(eq(contracts.status, "overdue")),
+    db.select({ count: sql<number>`count(*)` }).from(contracts).where(and(eq(contracts.status, "active"), inArray(contracts.contractScope, ["domestic_open", "international"]))),
+    db.select({ count: sql<number>`count(*)` }).from(contracts).where(and(eq(contracts.status, "overdue"), inArray(contracts.contractScope, ["domestic_open", "international"]))),
     db.select({ count: sql<number>`count(*)` }).from(contracts).where(eq(contracts.status, "suspended")),
     db.select({ count: sql<number>`count(*)` }).from(vehicles).where(eq(vehicles.status, "available")),
     db.select({ count: sql<number>`count(*)` }).from(vehicles),
@@ -250,7 +252,7 @@ export async function getDashboardSummary() {
   ]);
   const financialRows = await db.select({ contract: contracts }).from(contracts).where(inArray(contracts.status, ["active", "overdue"]));
   const breakdown = calculateDashboardOutstandingBreakdown(financialRows.map(({ contract }) => ({ totalAmount: contract.totalAmount, expectedReturnDate: contract.expectedReturnDate, rentalAmount: contract.rentalAmount, type: contract.type, actualReturnDate: contract.actualReturnDate, paidAmount: contract.paidAmount })));
-  return { activeContracts: Number(active[0]?.count ?? 0), overdueContracts: Number(overdue[0]?.count ?? 0), suspendedContracts: Number(suspended[0]?.count ?? 0), availableVehicles: Number(available[0]?.count ?? 0), totalVehicles: Number(totalVehicles[0]?.count ?? 0), rentedVehicles: Number(rentedVehicles[0]?.count ?? 0), outstandingAmount: String(outstanding[0]?.amount ?? "0.00"), previousOutstanding: breakdown.previousOutstanding, delayOutstanding: breakdown.delayOutstanding, currentOutstanding: breakdown.currentOutstanding, grandOutstanding: breakdown.grandOutstanding, maintenanceVehicles: Number(maintenance[0]?.count ?? 0), oilDueVehicles: Number(oilDue[0]?.count ?? 0), expiringDocuments: Number(expiringDocuments[0]?.count ?? 0), todayPayments: String(todayPayments[0]?.amount ?? "0.00"), todayPaymentDetails: todayPaymentDetails.map((payment) => ({ amount: String(payment.amount ?? "0.00"), method: payment.method, plateNumber: payment.plateNumber ?? "غير معروف", createdAt: payment.createdAt })) };
+  return { activeContracts: Number(active[0]?.count ?? 0), overdueContracts: Number(overdue[0]?.count ?? 0), externalActiveContracts: Number(externalActive[0]?.count ?? 0), externalOverdueContracts: Number(externalOverdue[0]?.count ?? 0), suspendedContracts: Number(suspended[0]?.count ?? 0), availableVehicles: Number(available[0]?.count ?? 0), totalVehicles: Number(totalVehicles[0]?.count ?? 0), rentedVehicles: Number(rentedVehicles[0]?.count ?? 0), outstandingAmount: String(outstanding[0]?.amount ?? "0.00"), previousOutstanding: breakdown.previousOutstanding, delayOutstanding: breakdown.delayOutstanding, currentOutstanding: breakdown.currentOutstanding, grandOutstanding: breakdown.grandOutstanding, maintenanceVehicles: Number(maintenance[0]?.count ?? 0), oilDueVehicles: Number(oilDue[0]?.count ?? 0), expiringDocuments: Number(expiringDocuments[0]?.count ?? 0), todayPayments: String(todayPayments[0]?.amount ?? "0.00"), todayPaymentDetails: todayPaymentDetails.map((payment) => ({ amount: String(payment.amount ?? "0.00"), method: payment.method, plateNumber: payment.plateNumber ?? "غير معروف", createdAt: payment.createdAt })) };
 }
 
 export async function createCustomer(input: { identityNumber: string; fullName: string; phone: string; phoneSecondary?: string; email?: string; notes?: string }) {
@@ -365,6 +367,7 @@ export async function recordContractOperation(input: { contractId?: number; cont
   if (!contract) throw new Error("العقد غير موجود في قاعدة البيانات؛ أنشئ العقد أولاً ثم نفّذ العملية");
   if (contract.status === "returned") throw new Error("لا يمكن تنفيذ أي عملية: تم استرجاع العقد وإغلاقه نهائياً");
   const contractId = contract.id;
+  if (["vehicle_swap", "close", "return", "suspend"].includes(input.operation) && input.vehicleMileage === undefined) throw new Error("يجب إدخال العداد الحالي قبل تنفيذ هذه العملية");
   const effects = buildOperationEffects(input.operation, input.amount);
   if (input.operation === "suspend" && !isFinanciallyDistressed({ startDate: contract.startDate, unitRate: contract.rentalAmount, type: contract.type, paidAmount: contract.paidAmount })) throw new Error("لا يمكن تعليق العقد: الدفعات تغطي الإيجار المستحق حتى اليوم");
   if (input.operation === "extension" && (!input.extensionDays || !Number.isInteger(input.extensionDays) || input.extensionDays <= 0)) throw new Error("أدخل عدد أيام التمديد صحيحة");
@@ -438,6 +441,9 @@ export async function recordContractOperation(input: { contractId?: number; cont
       const replacement = await db.select().from(vehicles).where(and(eq(vehicles.id, input.vehicleId), eq(vehicles.status, "available"))).limit(1);
       replacementIsAvailable = Boolean(replacement[0]);
     }
+    const swapTotals = calculateContractTotals({ baseTotal: contract.totalAmount, expectedReturnDate: contract.expectedReturnDate, rentalAmount: contract.rentalAmount, type: contract.type, actualReturnDate: contract.actualReturnDate });
+    const swapBalances = calculateContractBalances({ baseTotal: swapTotals.baseTotal, delayTotal: swapTotals.delayTotal, paidAmount: contract.paidAmount });
+    if (Number(swapBalances.grandOutstanding) > Number(contract.totalAmount) / 3) throw new Error(`لا يمكن تبديل السيارة: المستحقات ${swapBalances.grandOutstanding} ر.س تتجاوز ثلث قيمة العقد`);
     const swapValidation = validateVehicleSwap(contract.vehicleId, input.vehicleId, replacementIsAvailable);
     if (!swapValidation.ok) throw new Error(swapValidation.reason);
     previousVehicleId = contract.vehicleId;
@@ -602,7 +608,7 @@ export async function nextContractNumber() {
   return computeNextContractNumber(rows.map((row) => row.contractNumber));
 }
 
-export async function createContract(input: { contractNumber?: string; customerId: number; vehicleId: number; vehicleMileage?: number; type: "daily" | "monthly"; contractScope?: "domestic_limited" | "domestic_open" | "international"; startDate: string; expectedReturnDate: string; rentalAmount: string; days: number; totalAmount: string; paidAmount?: string; initialCashAmount?: string; initialNetworkAmount?: string; notes?: string; createdBy?: number }) {
+export async function createContract(input: { contractNumber?: string; customerId: number; vehicleId: number; vehicleMileage: number; oilOverrideAcknowledged?: boolean; type: "daily" | "monthly"; contractScope?: "domestic_limited" | "domestic_open" | "international"; startDate: string; expectedReturnDate: string; rentalAmount: string; days: number; totalAmount: string; paidAmount?: string; initialCashAmount?: string; initialNetworkAmount?: string; notes?: string; createdBy?: number }) {
   const db = await getDb(); if (!db) throw new Error("Database unavailable");
   const customerRows = await db.select().from(customers).where(eq(customers.id, input.customerId)).limit(1);
   const customer = customerRows[0];
@@ -614,13 +620,16 @@ export async function createContract(input: { contractNumber?: string; customerI
   const available = await listAvailableVehicles();
   const selectedVehicle = available.find((vehicle) => vehicle.id === input.vehicleId);
   if (!selectedVehicle) throw new Error("السيارة غير متاحة للتأجير بسبب عقد أو صيانة مفتوحة");
-  if (input.vehicleMileage !== undefined && !isMileageAdvanceValid(selectedVehicle.mileage, input.vehicleMileage)) throw new Error("قراءة العداد الجديدة لا يمكن أن تكون أقل من القراءة الحالية");
+  if (!Number.isInteger(input.vehicleMileage) || input.vehicleMileage < 0) throw new Error("يجب إدخال العداد الحالي عند إنشاء العقد");
+  if (!isMileageAdvanceValid(selectedVehicle.mileage, input.vehicleMileage)) throw new Error("قراءة العداد الجديدة لا يمكن أن تكون أقل من القراءة الحالية");
+  const oilStatus = calculateOilMaintenance({ currentMileage: input.vehicleMileage, lastOilChangeMileage: selectedVehicle.lastOilChangeMileage, oilChangeInterval: selectedVehicle.oilChangeInterval, lastOilChangeDate: selectedVehicle.lastOilChangeDate });
+  if (oilStatus.due && !input.oilOverrideAcknowledged && !hasOilOverride(input.notes)) throw new Error(`${mileageWarningMessage(oilStatus)}؛ لا يمكن إنشاء العقد إلا بعد تأكيد المسؤولية الشخصية`);
   const contractNumber = input.contractNumber?.trim() || await nextContractNumber();
-  const { vehicleMileage: _vehicleMileage, initialCashAmount: _initialCashAmount, initialNetworkAmount: _initialNetworkAmount, ...contractInput } = input;
+  const { vehicleMileage: _vehicleMileage, oilOverrideAcknowledged: _oilOverrideAcknowledged, initialCashAmount: _initialCashAmount, initialNetworkAmount: _initialNetworkAmount, ...contractInput } = input;
   const result = await db.insert(contracts).values({ ...contractInput, contractNumber, startDate: new Date(input.startDate), expectedReturnDate: new Date(input.expectedReturnDate), paidAmount: input.paidAmount ?? "0", createdBy: input.createdBy ?? null });
   const contractId = Number(result[0]?.insertId);
   await db.update(vehicles).set({ status: "rented", ...(input.vehicleMileage !== undefined ? { mileage: input.vehicleMileage } : {}) }).where(eq(vehicles.id, input.vehicleId!));
-  const contractNotes = `${input.notes?.trim() ?? ""}${input.vehicleMileage !== undefined ? `${input.notes?.trim() ? "؛ " : ""}قراءة العداد عند فتح العقد: ${input.vehicleMileage.toLocaleString()} كم` : ""}`.trim();
+  const contractNotes = `${input.notes?.trim() ?? ""}${input.notes?.trim() ? "؛ " : ""}قراءة العداد عند فتح العقد: ${input.vehicleMileage.toLocaleString()} كم${oilStatus.due ? "؛ تم إنشاء العقد على مسؤولية الموظف بعد تنبيه غيار الزيت" : ""}`.trim();
   await db.insert(contractOperations).values({ contractId, operation: "new_contract", vehicleId: input.vehicleId, details: contractNotes ? `إنشاء عقد ${input.type}؛ ملاحظات العقد: ${contractNotes}` : `إنشاء عقد ${input.type}`, createdBy: input.createdBy });
   const initialCash = Number(input.initialCashAmount) || 0;
   const initialNetwork = Number(input.initialNetworkAmount) || 0;
@@ -658,14 +667,15 @@ export async function getDashboardAlerts() {
   const alerts: Array<{ type: "overdue" | "maintenance" | "document"; title: string; description: string; severity: "warning" | "danger" }> = [];
   const overdue = await db.select({ contractNumber: contracts.contractNumber, expectedReturnDate: contracts.expectedReturnDate }).from(contracts).where(eq(contracts.status, "overdue")).orderBy(desc(contracts.expectedReturnDate));
   const maintenance = await db.select({ plateNumber: vehicles.plateNumber, make: vehicles.make, model: vehicles.model }).from(vehicles).where(eq(vehicles.status, "maintenance")).orderBy(desc(vehicles.updatedAt));
-  const oilDue = await db.select({ plateNumber: vehicles.plateNumber, mileage: vehicles.mileage, lastOilChangeMileage: vehicles.lastOilChangeMileage, oilChangeInterval: vehicles.oilChangeInterval }).from(vehicles).where(sql`${vehicles.lastOilChangeMileage} is not null and ${vehicles.mileage} >= ${vehicles.lastOilChangeMileage} + ${vehicles.oilChangeInterval}`);
+  const oilCandidates = await db.select({ plateNumber: vehicles.plateNumber, mileage: vehicles.mileage, lastOilChangeMileage: vehicles.lastOilChangeMileage, lastOilChangeDate: vehicles.lastOilChangeDate, oilChangeInterval: vehicles.oilChangeInterval }).from(vehicles);
+  const oilDue = oilCandidates.filter((vehicle) => calculateOilMaintenance({ currentMileage: vehicle.mileage, lastOilChangeMileage: vehicle.lastOilChangeMileage, oilChangeInterval: vehicle.oilChangeInterval, lastOilChangeDate: vehicle.lastOilChangeDate }).due);
   const documentedVehicles = await db.select({ plateNumber: vehicles.plateNumber, insuranceExpiryDate: vehicles.insuranceExpiryDate, inspectionExpiryDate: vehicles.inspectionExpiryDate, registrationExpiryDate: vehicles.registrationExpiryDate }).from(vehicles);
   const horizon = Date.now() + 30 * 86400000;
   const documents: Array<{ plateNumber: string; label: string; value: Date }> = [];
   documentedVehicles.forEach((vehicle) => { ([['التأمين', vehicle.insuranceExpiryDate], ['الفحص الدوري', vehicle.inspectionExpiryDate], ['الاستمارة', vehicle.registrationExpiryDate] ] as const).forEach(([label, value]) => { if (value) { const expiry = new Date(value); if (expiry.getTime() <= horizon) documents.push({ plateNumber: vehicle.plateNumber, label, value: expiry }); } }); });
   overdue.slice(0, 10).forEach((contract) => alerts.push({ type: "overdue", title: `العقد ${contract.contractNumber} متأخر`, description: `تاريخ التسليم المتوقع ${contract.expectedReturnDate}`, severity: "danger" }));
   maintenance.slice(0, 10).forEach((vehicle) => alerts.push({ type: "maintenance", title: `السيارة ${vehicle.plateNumber} تحتاج صيانة`, description: `${vehicle.make} ${vehicle.model} غير متاحة للتأجير`, severity: "warning" }));
-  oilDue.slice(0, 10).forEach((vehicle) => alerts.push({ type: "maintenance", title: `موعد تغيير زيت السيارة ${vehicle.plateNumber}`, description: `العداد الحالي ${vehicle.mileage.toLocaleString()} كم؛ الموعد عند ${((vehicle.lastOilChangeMileage ?? 0) + vehicle.oilChangeInterval).toLocaleString()} كم`, severity: "warning" }));
+  oilDue.slice(0, 10).forEach((vehicle) => { const oilStatus = calculateOilMaintenance({ currentMileage: vehicle.mileage, lastOilChangeMileage: vehicle.lastOilChangeMileage, oilChangeInterval: vehicle.oilChangeInterval, lastOilChangeDate: vehicle.lastOilChangeDate }); alerts.push({ type: "maintenance", title: `موعد تغيير زيت السيارة ${vehicle.plateNumber}`, description: `${mileageWarningMessage(oilStatus)}؛ العداد الحالي ${vehicle.mileage.toLocaleString()} كم`, severity: "warning" }); });
   documents.sort((a, b) => a.value.getTime() - b.value.getTime()).slice(0, 10).forEach((document) => alerts.push({ type: "document", title: `وثيقة ${document.label} للسيارة ${document.plateNumber}`, description: `تاريخ الانتهاء ${document.value}`, severity: document.value.getTime() < Date.now() ? "danger" : "warning" }));
   return alerts;
 }
