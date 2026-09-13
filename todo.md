@@ -950,5 +950,5 @@
 - [x] تدقيق نسخة المشروع الحالية قبل تصدير GitHub: المصدر، Drizzle، migrations، الاختبارات، package.json وlockfile، والاستيرادات.
 - [x] التأكد من استبعاد الأسرار وكلمات المرور وملفات .env وملفات البيانات المحلية الحساسة من مستودع GitHub.
 - [x] تشغيل pnpm check وpnpm build وpnpm test دون تشغيل migrations أو لمس قاعدة البيانات.
-- [ ] إنشاء Repository GitHub جديد خاص ودفع أحدث checkpoint العامل فقط.
-- [ ] توثيق طريقة Clone → Install → Build → Test لنسخة تطوير مستقلة دون اتصال بقاعدة الإنتاج.
+- [x] إنشاء Repository GitHub جديد خاص ودفع أحدث checkpoint العامل فقط.
+- [x] توثيق طريقة Clone → Install → Build → Test لنسخة تطوير مستقلة دون اتصال بقاعدة الإنتاج.
