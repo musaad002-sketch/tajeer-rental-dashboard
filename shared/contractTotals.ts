@@ -10,6 +10,7 @@ export function calculateContractTotals(input: {
   days?: number;
   graceHours?: number;
   actualReturnDate?: string | Date | null;
+  previousDueAmount?: string | number;
   asOf?: Date;
 }) {
   const baseTotal = Math.max(0, Number(input.baseTotal) || 0);
@@ -19,6 +20,7 @@ export function calculateContractTotals(input: {
   const graceHours = input.graceHours ?? getContractGraceHours({ type: input.type, contractScope: input.contractScope, days: input.days });
   const late = calculateLateAmount(input.expectedReturnDate, input.rentalAmount, input.type, asOf, graceHours);
   const delayTotal = Number(late.amount);
+  const previousDueAmount = Math.max(0, Number(input.previousDueAmount) || 0);
   return {
     baseTotal: formatMoney(baseTotal),
     contractReferenceTotal: formatMoney(baseTotal),
@@ -27,6 +29,6 @@ export function calculateContractTotals(input: {
     amountDueThroughDate: formatMoney(baseTotal + delayTotal),
     // The contract reference is already represented by the previous balance.
     // Only newly accrued delay is collectible in the follow-up total.
-    grandTotal: formatMoney(delayTotal),
+    grandTotal: formatMoney(previousDueAmount + delayTotal),
   };
 }
