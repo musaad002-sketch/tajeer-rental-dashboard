@@ -6,6 +6,7 @@ import ContractHistoryPage from "@/pages/ContractHistoryPage";
 import ContractDetailsPage from "@/pages/ContractDetailsPage";
 import OperationsPage from "./pages/OperationsPage";
 import VehicleDetailsPage from "./pages/VehicleDetailsPage";
+import FleetReadinessPage from "./pages/FleetReadinessPage";
 import ReferenceLedgerPage from "./pages/ReferenceLedgerPage";
 import CustomersPage from "./pages/CustomersPage";
 import CustomerDetailsPage from "./pages/CustomerDetailsPage";
@@ -21,7 +22,7 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
 
 function Router() {
-  return <Switch><Route path="/" component={Home} /><Route path="/contracts/new" component={NewContractPage} /><Route path="/contracts/history" component={ContractHistoryPage} /><Route path="/contracts/active" component={OperationsPage} /><Route path="/contracts/overdue" component={OperationsPage} /><Route path="/contracts/suspended" component={OperationsPage} /><Route path="/contracts/:id" component={ContractDetailsPage} /><Route path="/vehicles" component={OperationsPage} /><Route path="/vehicles/:id" component={VehicleDetailsPage} /><Route path="/customers" component={CustomersPage} /><Route path="/blocked-customers" component={BlockedCustomersPage} /><Route path="/customers/:id" component={CustomerDetailsPage} /><Route path="/accounting" component={OperationsPage} /><Route path="/payments" component={ReferenceLedgerPage} /><Route path="/returns" component={ReferenceLedgerPage} /><Route path="/maintenance" component={OperationsPage} /><Route path="/reports" component={ReportsPage} /><Route path="/users" component={UsersPage} /><Route path="/editor" component={VisualEditorPage} /><Route path="/verify-email" component={VerifyEmailPage} /><Route path="/reset-password" component={ResetPasswordPage} /><Route path="/404" component={NotFound} /><Route component={NotFound} /></Switch>;
+  return <Switch><Route path="/" component={Home} /><Route path="/contracts/new" component={NewContractPage} /><Route path="/contracts/history" component={ContractHistoryPage} /><Route path="/contracts/active" component={OperationsPage} /><Route path="/contracts/overdue" component={OperationsPage} /><Route path="/contracts/suspended" component={OperationsPage} /><Route path="/contracts/:id" component={ContractDetailsPage} /><Route path="/fleet-readiness" component={FleetReadinessPage} /><Route path="/vehicles" component={OperationsPage} /><Route path="/vehicles/:id" component={VehicleDetailsPage} /><Route path="/customers" component={CustomersPage} /><Route path="/blocked-customers" component={BlockedCustomersPage} /><Route path="/customers/:id" component={CustomerDetailsPage} /><Route path="/accounting" component={OperationsPage} /><Route path="/payments" component={ReferenceLedgerPage} /><Route path="/returns" component={ReferenceLedgerPage} /><Route path="/maintenance" component={OperationsPage} /><Route path="/reports" component={ReportsPage} /><Route path="/users" component={UsersPage} /><Route path="/editor" component={VisualEditorPage} /><Route path="/verify-email" component={VerifyEmailPage} /><Route path="/reset-password" component={ResetPasswordPage} /><Route path="/404" component={NotFound} /><Route component={NotFound} /></Switch>;
 }
 
 export default function App() {
