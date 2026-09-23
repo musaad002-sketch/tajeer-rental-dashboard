@@ -1,15 +1,37 @@
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+function parseDateTime(value: string | Date) {
+  if (value instanceof Date) return new Date(value.getTime());
+  return new Date(/T|\s/.test(value) ? value : `${value}T00:00:00`);
+}
+
 export function rentalDays(startDate: string, returnDate: string) {
   if (!startDate || !returnDate) return 0;
-  const start = new Date(`${startDate}T00:00:00`).getTime();
-  const end = new Date(`${returnDate}T00:00:00`).getTime();
+  const start = parseDateTime(startDate).getTime();
+  const end = parseDateTime(returnDate).getTime();
   if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return 0;
   return Math.max(1, Math.ceil((end - start) / DAY_MS));
 }
 
 export function formatMoney(value: number) {
   return Number.isFinite(value) ? value.toFixed(2) : "0.00";
+}
+
+export function calculateMonthlyEntitlements(startDate: string, returnDate: string, monthlyRate: string | number) {
+  const start = parseDateTime(startDate);
+  const end = parseDateTime(returnDate);
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) return [];
+  const rate = Number(monthlyRate) || 0;
+  const result: Array<{ month: number; startDate: string; endDate: string; amount: string }> = [];
+  let periodStart = new Date(start.getTime());
+  let month = 1;
+  while (periodStart < end) {
+    const periodEnd = new Date(Math.min(end.getTime(), periodStart.getTime() + 30 * DAY_MS));
+    result.push({ month, startDate: periodStart.toISOString(), endDate: periodEnd.toISOString(), amount: formatMoney(rate) });
+    periodStart = periodEnd;
+    month += 1;
+  }
+  return result;
 }
 
 export function calculateContractAmounts(startDate: string, returnDate: string, unitRate: string | number, paidAmount: string | number = 0, type: "daily" | "monthly" = "daily") {
@@ -23,29 +45,29 @@ export function calculateContractAmounts(startDate: string, returnDate: string, 
 }
 
 function dateAtMidnight(value: string | Date) {
-  if (value instanceof Date) return new Date(value.getFullYear(), value.getMonth(), value.getDate());
-  return new Date(`${value}T00:00:00`);
+  const date = parseDateTime(value);
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
-export function lateDays(expectedReturnDate: string | Date, asOf: Date = new Date()) {
-  const expected = dateAtMidnight(expectedReturnDate).getTime();
-  const today = new Date(asOf.getFullYear(), asOf.getMonth(), asOf.getDate()).getTime();
-  if (!Number.isFinite(expected) || !Number.isFinite(today) || today <= expected) return 0;
-  return Math.floor((today - expected) / DAY_MS);
+export function lateDays(expectedReturnDate: string | Date, asOf: Date = new Date(), graceHours = 0) {
+  const expected = parseDateTime(expectedReturnDate).getTime() + Math.max(0, graceHours) * 60 * 60 * 1000;
+  const elapsed = asOf.getTime() - expected;
+  if (!Number.isFinite(expected) || !Number.isFinite(asOf.getTime()) || elapsed <= 0) return 0;
+  return Math.ceil(elapsed / DAY_MS);
 }
 
-export function calculateLateAmount(expectedReturnDate: string | Date, unitRate: string | number, type: "daily" | "monthly", asOf: Date = new Date()) {
-  const days = lateDays(expectedReturnDate, asOf);
+export function calculateLateAmount(expectedReturnDate: string | Date, unitRate: string | number, type: "daily" | "monthly", asOf: Date = new Date(), graceHours = 0) {
+  const days = lateDays(expectedReturnDate, asOf, graceHours);
   const rate = Number(unitRate) || 0;
   const dailyRate = type === "monthly" ? rate / 30 : rate;
   return { days, amount: formatMoney(Math.max(0, days * dailyRate)) };
 }
 
 export function accruedRentalAmount(startDate: string | Date, unitRate: string | number, type: "daily" | "monthly", asOf: Date = new Date()) {
-  const start = dateAtMidnight(startDate).getTime();
-  const today = new Date(asOf.getFullYear(), asOf.getMonth(), asOf.getDate()).getTime();
+  const start = parseDateTime(startDate).getTime();
+  const today = asOf.getTime();
   if (!Number.isFinite(start) || !Number.isFinite(today) || today < start) return "0.00";
-  const usedDays = Math.max(1, Math.floor((today - start) / DAY_MS) + 1);
+  const usedDays = Math.max(1, Math.ceil((today - start) / DAY_MS));
   const rate = Number(unitRate) || 0;
   return formatMoney(usedDays * (type === "monthly" ? rate / 30 : rate));
 }

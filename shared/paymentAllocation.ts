@@ -26,7 +26,6 @@ export function allocatePayment(input: {
     otherBalance: input.otherOutstanding,
     payment: input.paymentAmount,
   });
-
   return {
     appliedToPrevious: Number(ledger.paymentToPrevious),
     appliedToCurrent: Number(ledger.paymentToDelay),

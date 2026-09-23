@@ -6,6 +6,8 @@ export type DashboardFinancialRow = {
   expectedReturnDate: Date | string;
   rentalAmount: string | number;
   type: "daily" | "monthly";
+  contractScope?: "domestic_limited" | "domestic_open" | "international";
+  days?: number;
   actualReturnDate?: Date | string | null;
   paidAmount: string | number;
   excessMileageAmount?: string | number;
@@ -13,7 +15,7 @@ export type DashboardFinancialRow = {
 
 export function calculateDashboardOutstandingBreakdown(rows: DashboardFinancialRow[]) {
   const totals = rows.reduce((result, row) => {
-    const contractTotals = calculateContractTotals({ baseTotal: row.totalAmount, expectedReturnDate: row.expectedReturnDate, rentalAmount: row.rentalAmount, type: row.type, actualReturnDate: row.actualReturnDate });
+    const contractTotals = calculateContractTotals({ baseTotal: row.totalAmount, expectedReturnDate: row.expectedReturnDate, rentalAmount: row.rentalAmount, type: row.type, contractScope: row.contractScope, days: row.days, actualReturnDate: row.actualReturnDate });
     const balances = calculateContractBalances({ baseTotal: contractTotals.baseTotal, delayTotal: contractTotals.delayTotal, paidAmount: row.paidAmount, excessMileageBalance: row.excessMileageAmount });
     result.previous += Number(balances.previousOutstanding);
     result.delay += Number(contractTotals.delayTotal);

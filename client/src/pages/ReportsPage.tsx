@@ -2,31 +2,149 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { BarChart3, CarFront, FileBarChart, Printer, RefreshCw, WalletCards } from "lucide-react";
-import { useState } from "react";
+import { canPerform } from "@shared/permissions";
+import { formatGregorianDate } from "@shared/dateFormat";
+import { getOperatingCycle } from "@shared/rentalRules";
+import { ArrowDownLeft, ArrowUpLeft, ClipboardList, Coins, Download, FileBarChart, History, Layers3, Loader2, ReceiptText, WalletCards } from "lucide-react";
+import { toast } from "sonner";
+import { useMemo, useState } from "react";
 
-function Stat({ label, value, tone = "text-[#172235]" }: { label: string; value: string | number; tone?: string }) {
-  return <Card className="border-0 shadow-sm"><CardContent className="p-5"><p className="text-xs text-slate-400">{label}</p><p className={`mt-2 text-2xl font-black ${tone}`}>{value}</p></CardContent></Card>;
-}
+const statusLabels = { approved: "معتمد", pending: "معلّق", rejected: "مرفوض", legacyAccepted: "مقبول سابقًا" } as const;
+const transactionLabels = { revenue: "إيراد", expense: "مصروف", payment: "دفعة" } as const;
+const allocationLabels: Record<string, string> = { previous_balance: "رصيد سابق", current_contract: "العقد الحالي", excess_mileage: "كيلومترات إضافية", remaining_contract_balance: "الرصيد المتبقي للعقد", delay: "تأخير", other: "أخرى" };
+function money(value: string | number) { return `${Number(value || 0).toLocaleString("ar-SA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ر.س`; }
+function StatusPill({ status }: { status: keyof typeof statusLabels }) { const styles = { approved: "border-emerald-200 bg-emerald-50 text-emerald-700", pending: "border-amber-200 bg-amber-50 text-amber-700", rejected: "border-rose-200 bg-rose-50 text-rose-700", legacyAccepted: "border-slate-200 bg-slate-100 text-slate-600" }; return <Badge variant="outline" className={styles[status]}>{statusLabels[status]}</Badge>; }
+function StatusAmounts({ values }: { values: { approved: string; pending: string; rejected: string; legacyAccepted: string } }) { return <div className="mt-4 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">{(Object.keys(statusLabels) as Array<keyof typeof statusLabels>).map((status) => <div key={status} className="rounded-xl bg-slate-50 p-3"><div className="mb-1 flex items-center justify-between gap-2 text-slate-500"><span>{statusLabels[status]}</span><StatusPill status={status} /></div><strong className="block text-sm text-slate-800">{money(values[status])}</strong></div>)}</div>; }
 
 export default function ReportsPage() {
   const { user } = useAuth();
-  const isAdmin = user?.role === "admin";
+  const [cycleOffset, setCycleOffset] = useState(0);
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const canView = canPerform(user?.role ?? "user", user?.permissions, "accounting.view");
+  const cycleDate = useMemo(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() + cycleOffset);
+    return d.toISOString();
+  }, [cycleOffset]);
+  const cycle = useMemo(() => getOperatingCycle(new Date(cycleDate)), [cycleDate]);
   const utils = trpc.useUtils();
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
-  const contracts = trpc.contracts.list.useQuery(undefined, { enabled: isAdmin });
-  const fleet = trpc.reports.fleet.useQuery(undefined, { enabled: isAdmin });
-  const revenue = trpc.reports.vehicleRevenue.useQuery({ from: from || undefined, to: to || undefined }, { enabled: isAdmin });
-  const loading = contracts.isLoading || fleet.isLoading || revenue.isLoading;
-  const failed = contracts.error ?? fleet.error ?? revenue.error;
-  const report = revenue.data;
-  const rows = report?.vehicles ?? [];
-
-  if (user && !isAdmin) return <DashboardLayout><div className="mx-auto max-w-2xl rounded-2xl bg-white p-8 text-center shadow-sm"><h1 className="text-xl font-black">التقارير غير متاحة</h1><p className="mt-3 text-sm text-slate-500">صلاحية التقارير متاحة لمدير النظام فقط.</p></div></DashboardLayout>;
-
-  return <DashboardLayout><style>{`@media print { body * { visibility: hidden; } #office-report-print, #office-report-print * { visibility: visible; } #office-report-print { position: absolute; inset: 0; width: 100%; max-width: none; padding: 125px 34px 34px; background-image: url('/manus-storage/mishari-office-letterhead_30b0512c.png'); background-repeat: no-repeat; background-size: 100% auto; -webkit-print-color-adjust: exact; print-color-adjust: exact; } #office-report-actions { display: none; } }`}</style><div id="office-report-print" className="mx-auto max-w-[1400px] space-y-6"><div className="flex flex-col justify-between gap-4 md:flex-row md:items-end"><div><div className="mb-2 flex items-center gap-2 text-xs font-bold text-[#139f95]"><FileBarChart className="h-4 w-4" /> وحدة التقارير</div><h1 className="text-3xl font-black tracking-tight">التقارير التشغيلية</h1><p className="mt-2 text-sm text-slate-500">تقارير مباشرة مبنية على العقود والدفعات وحالة الأسطول الحالية.</p></div><div id="office-report-actions" className="flex flex-wrap gap-2"><Input type="date" value={from} onChange={(event) => setFrom(event.target.value)} aria-label="بداية دورة التقرير" /><Input type="date" value={to} min={from || undefined} onChange={(event) => setTo(event.target.value)} aria-label="نهاية دورة التقرير" /><Button variant="outline" onClick={() => { setFrom(""); setTo(""); }} className="gap-2">كل الفترات</Button><Button variant="outline" onClick={() => window.print()} className="gap-2"><Printer className="h-4 w-4" /> طباعة على مطبوعات المكتب</Button><Button onClick={() => Promise.all([utils.contracts.list.invalidate(), utils.reports.fleet.invalidate(), utils.reports.vehicleRevenue.invalidate()])} className="gap-2 bg-[#13a99f] hover:bg-[#0d938b]"><RefreshCw className="h-4 w-4" /> تحديث التقارير</Button></div></div>{failed && <p className="rounded-xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">تعذر تحميل التقارير: {failed.message}</p>}{loading && <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-500">جارٍ إنشاء التقارير من البيانات الحالية...</p>}<section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5"><Stat label="إجمالي العقود" value={contracts.data?.length ?? 0} /><Stat label="العقود السارية" value={contracts.data?.filter((item) => item.contract.status === "active").length ?? 0} tone="text-[#139f95]" /><Stat label="العقود المتأخرة" value={contracts.data?.filter((item) => item.contract.status === "overdue").length ?? 0} tone="text-[#dc4d53]" /><Stat label="إجمالي السيارات" value={fleet.data?.total ?? 0} /><Stat label="السيارات المتاحة" value={fleet.data?.available ?? 0} tone="text-[#3079cb]" /></section><section className="grid gap-4 lg:grid-cols-2"><Card className="border-0 shadow-sm"><CardHeader><CardTitle className="flex items-center gap-2 text-base"><CarFront className="h-5 w-5 text-[#139f95]" /> حالة الأسطول</CardTitle></CardHeader><CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-4">{[["مؤجرة", fleet.data?.rented ?? 0], ["صيانة", fleet.data?.maintenance ?? 0], ["غير متاحة", fleet.data?.unavailable ?? 0], ["متاحة", fleet.data?.available ?? 0]].map(([label, value]) => <div key={label as string} className="rounded-xl bg-slate-50 p-4 text-center"><p className="text-xs text-slate-400">{label as string}</p><p className="mt-1 text-xl font-black">{value as number}</p></div>)}</CardContent></Card><Card className="border-0 shadow-sm"><CardHeader><CardTitle className="flex items-center gap-2 text-base"><WalletCards className="h-5 w-5 text-[#d99c1d]" /> ملخص الإيرادات</CardTitle></CardHeader><CardContent className="space-y-3"><p className="text-sm text-slate-500">عدد السيارات التي لها حركة مالية: <strong className="text-slate-800">{rows.length}</strong></p><p className="text-sm text-slate-500">إجمالي إيراد التأجير: <strong className="text-[#0c8f87]">{report?.totals.collected ?? "0.00"} ر.س</strong></p><p className="text-sm text-slate-500">إيرادات أخرى: <strong className="text-[#3079cb]">{report?.totals.otherRevenue ?? "0.00"} ر.س</strong></p><p className="text-sm text-slate-500">إجمالي المتبقي: <strong className="text-[#d99c1d]">{report?.totals.outstanding ?? "0.00"} ر.س</strong></p><p className="text-sm text-slate-500">متأخرات/متعثرات مستبعدة: <strong className="text-red-600">{report?.totals.excludedOutstanding ?? "0.00"} ر.س</strong></p><p className="text-sm text-slate-500">المصروفات: <strong className="text-red-600">{report?.totals.expenses ?? "0.00"} ر.س</strong></p><p className="text-sm text-slate-500">دائن معلّق للعملاء: <strong className="text-amber-700">{report?.totals.pendingCustomerCredits ?? "0.00"} ر.س</strong></p><p className="text-sm text-slate-500">دائن تم تحويله للعملاء: <strong className="text-slate-700">{report?.totals.settledCustomerCredits ?? "0.00"} ر.س</strong></p><p className="text-sm text-slate-500">صافي الإيراد: <strong className="text-[#0c8f87]">{report?.totals.netRevenue ?? "0.00"} ر.س</strong></p></CardContent></Card></section><Card className="border-0 shadow-sm"><CardHeader><CardTitle className="flex items-center gap-2 text-base"><BarChart3 className="h-5 w-5 text-[#139f95]" /> تقرير إيرادات السيارات</CardTitle></CardHeader><CardContent><div className="overflow-x-auto"><table className="w-full min-w-[720px] text-right text-sm"><thead><tr className="border-b border-slate-100 text-xs text-slate-400"><th className="pb-3">السيارة</th><th className="pb-3">الأشهر</th><th className="pb-3">إيراد التأجير</th><th className="pb-3">إيرادات أخرى</th><th className="pb-3">التأخير</th><th className="pb-3">المتبقي</th><th className="pb-3">الحالة</th></tr></thead><tbody>{rows.length ? rows.map((row) => <tr key={row.vehicleId} className="border-b border-slate-50 last:border-0"><td className="py-4 font-semibold text-slate-700">{row.vehicleName} — {row.plateNumber}</td><td className="py-4 text-slate-600">{row.months.length}</td><td className="py-4 text-[#0c8f87]">{row.collected} ر.س</td><td className="py-4 text-[#3079cb]">{row.otherRevenue} ر.س</td><td className="py-4 text-red-600">{row.delayTotal} ر.س</td><td className="py-4 text-[#d99c1d]">{row.outstanding} ر.س</td><td className="py-4"><Badge className="bg-emerald-50 text-emerald-700 hover:bg-emerald-50">جاهز</Badge></td></tr>) : <tr><td colSpan={7} className="py-12 text-center text-slate-400">لا توجد بيانات مالية لعرضها في هذه الدورة.</td></tr>}</tbody></table></div></CardContent></Card><Card className="border-0 bg-slate-50 shadow-sm"><CardContent className="p-5 text-sm"><p className="font-black text-[#172235]">بيانات التحويل البنكي</p><p className="mt-2 text-slate-600">مصرف الراجحي — مشاري بن شويط سعود السبيعي</p><p className="mt-1 font-mono text-slate-800">الحساب: 496000010006080246933</p><p className="mt-1 font-mono text-slate-800">IBAN: SA9880000496608010246933</p></CardContent></Card></div></DashboardLayout>;
+  const report = trpc.financialReporting.readModel.useQuery({ cycleDate }, { enabled: Boolean(user && canView) });
+  const { data: annualReport, isLoading: annualLoading } = trpc.financialReporting.annual.useQuery(
+    { year: selectedYear },
+    { enabled: Boolean(user && canView) }
+  );
+  const handleExport = async (type: "financial" | "payments" | "expenses") => {
+    try {
+      const procedure = type === "financial"
+        ? utils.exports.financialCsv
+        : type === "payments"
+          ? utils.exports.paymentsCsv
+          : utils.exports.expensesCsv;
+      const result = await procedure.fetch({ cycleDate });
+      const blob = new Blob(["\uFEFF" + result.csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = result.filename;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "تعذر تصدير التقرير");
+    }
+  };
+  const model = report.data;
+  if (!canView) return <DashboardLayout><div dir="rtl" className="mx-auto max-w-5xl"><Card><CardContent className="p-10 text-center text-slate-500">التقارير المالية متاحة للحسابات المصرّح لها فقط.</CardContent></Card></div></DashboardLayout>;
+  if (report.isLoading) return <DashboardLayout><div dir="rtl" className="flex min-h-[55vh] items-center justify-center text-sm text-slate-500"><Loader2 className="ml-2 h-5 w-5 animate-spin text-[#139f95]" />جارٍ تحميل التقارير المالية...</div></DashboardLayout>;
+  if (report.error || !model) return <DashboardLayout><div dir="rtl" className="mx-auto max-w-5xl"><Card className="border-rose-100"><CardContent className="p-10 text-center text-sm text-rose-700">تعذر تحميل التقرير المالي: {report.error?.message ?? "لا توجد بيانات"}</CardContent></Card></div></DashboardLayout>;
+  const { summary, transactions, allocations } = model; const netApproved = Number(summary.revenue.approved) - Number(summary.expense.approved);
+  return <DashboardLayout><div dir="rtl" className="mx-auto max-w-7xl space-y-6">
+    <Card className="border-0 shadow-sm"><CardContent className="flex flex-wrap items-center justify-between gap-3 p-4"><div><p className="text-xs text-slate-500">دورة التشغيل الحالية</p><p className="mt-1 font-black text-[#172235]">{formatGregorianDate(cycle.start)} – {formatGregorianDate(cycle.end)}</p></div><div className="flex gap-2"><Button variant="outline" onClick={() => setCycleOffset(offset => offset - 1)}>الدورة السابقة</Button><Button variant={cycleOffset === 0 ? "default" : "outline"} onClick={() => setCycleOffset(0)}>الحالية</Button><Button variant="outline" onClick={() => setCycleOffset(offset => offset + 1)}>الدورة التالية</Button></div></CardContent></Card>
+    <section className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => handleExport("financial")}><Download className="ml-2 h-4 w-4" />تصدير كل الحركات (CSV)</Button><Button variant="outline" onClick={() => handleExport("payments")}><Download className="ml-2 h-4 w-4" />تصدير الدفعات (CSV)</Button><Button variant="outline" onClick={() => handleExport("expenses")}><Download className="ml-2 h-4 w-4" />تصدير المصروفات (CSV)</Button></section>
+    <header className="rounded-3xl bg-[#0b2747] p-6 text-white shadow-sm md:p-8"><div className="flex flex-wrap items-start justify-between gap-5"><div><p className="mb-2 flex items-center gap-2 text-sm font-bold text-[#77d6cd]"><FileBarChart className="h-4 w-4" />المحاسبة · تقارير مالية</p><h1 className="text-3xl font-black tracking-tight md:text-4xl">لوحة التقارير المالية</h1><p className="mt-3 max-w-2xl text-sm leading-7 text-slate-200">قراءة موحّدة للإيرادات والمصروفات والدفعات والتخصيصات. يتم احتساب الأرقام الفعّالة مرة واحدة فقط، مع إبقاء التصحيحات والقيود العكسية كسجل تدقيقي.</p></div><div className="rounded-2xl border border-white/10 bg-white/10 p-4 text-left"><p className="text-xs text-slate-300">صافي المعتمد</p><p className="mt-1 text-2xl font-black text-[#a9eee8]">{money(netApproved)}</p><p className="mt-1 text-[11px] text-slate-300">إيرادات معتمدة − مصروفات معتمدة</p></div></div></header>
+    <section className="grid gap-4 md:grid-cols-3" aria-label="الإجماليات المالية المعتمدة">{[{ key: "revenue", label: "الإيرادات", icon: ArrowUpLeft, value: summary.revenue.approved, tone: "text-emerald-700", bg: "bg-emerald-50" }, { key: "expense", label: "المصروفات", icon: ArrowDownLeft, value: summary.expense.approved, tone: "text-rose-700", bg: "bg-rose-50" }, { key: "payment", label: "الدفعات", icon: WalletCards, value: summary.payment.approved, tone: "text-[#0c8f87]", bg: "bg-[#effaf8]" }].map((item) => { const Icon = item.icon; return <Card key={item.key} className="border-0 shadow-sm"><CardContent className="p-5"><div className="flex items-center justify-between"><div className={`rounded-2xl p-3 ${item.bg}`}><Icon className={`h-5 w-5 ${item.tone}`} /></div><StatusPill status="approved" /></div><p className="mt-5 text-sm font-bold text-slate-500">{item.label}</p><p className={`mt-1 text-2xl font-black ${item.tone}`}>{money(item.value)}</p><StatusAmounts values={summary[item.key as "revenue" | "expense" | "payment"]} /></CardContent></Card>; })}</section>
+    <section className="grid gap-4 md:grid-cols-2"><Card className="border-0 shadow-sm"><CardHeader><CardTitle className="flex items-center gap-2 text-base"><Layers3 className="h-5 w-5 text-[#139f95]" />إجمالي allocations</CardTitle></CardHeader><CardContent className="flex items-end justify-between gap-4"><div><p className="text-3xl font-black text-[#0c8f87]">{money(summary.approvedAllocations.total)}</p><p className="mt-2 text-xs text-slate-500">{summary.approvedAllocations.count.toLocaleString("ar-SA")} تخصيصات لدفعات معتمدة</p></div><ClipboardList className="h-10 w-10 text-slate-200" /></CardContent></Card><Card className="border-0 bg-slate-50 shadow-sm"><CardContent className="flex items-center gap-4 p-5"><History className="h-8 w-8 shrink-0 text-[#d99c1d]" /><div><p className="font-black text-[#172235]">قراءة آمنة بلا double-counting</p><p className="mt-1 text-xs leading-6 text-slate-500">التصحيح والعكس لا يعدّلان السجل الأصلي؛ يعرضهما التقرير ضمن الحركة الفعّالة وفق read model المعتمد.</p></div></CardContent></Card></section>
+    <Card className="border-0 shadow-sm"><CardHeader><CardTitle className="flex items-center gap-2 text-base"><ReceiptText className="h-5 w-5 text-[#139f95]" />الحركات المالية الفعّالة</CardTitle><p className="text-xs text-slate-400">تشمل approved وlegacy_accepted بعد تطبيق قواعد التصحيح والعكس، بينما تظهر حالات pending وrejected في الإجماليات أعلاه.</p></CardHeader><CardContent><div className="overflow-x-auto"><table className="w-full min-w-[760px] text-right text-sm"><caption className="sr-only">الحركات المالية الفعالة</caption><thead><tr className="border-b border-slate-100 text-xs text-slate-400"><th className="p-3">المرجع</th><th className="p-3">النوع</th><th className="p-3">المبلغ</th><th className="p-3">الحالة</th><th className="p-3">المصدر</th><th className="p-3">المعالجة</th></tr></thead><tbody>{transactions.length ? transactions.map((row) => { const status = row.approvalStatus === "legacy_accepted" ? "legacyAccepted" : "approved"; const isCorrection = Boolean(row.correctionOfTransactionId); const isReversal = Boolean(row.reversalOfTransactionId); return <tr key={row.id} className="border-b border-slate-50 last:border-0"><td className="p-3 font-mono text-xs text-slate-600">#{row.id}</td><td className="p-3 font-bold text-slate-700">{transactionLabels[row.transactionType]}</td><td className={`p-3 font-black ${isReversal ? "text-rose-700" : "text-slate-800"}`}>{isReversal ? "−" : ""}{money(row.amount)}</td><td className="p-3"><StatusPill status={status} /></td><td className="p-3 text-xs text-slate-500">{row.sourceTable ? `${row.sourceTable}${row.sourceId ? ` · ${row.sourceId}` : ""}` : "—"}</td><td className="p-3 text-xs text-slate-500">{isCorrection ? `تصحيح للسجل #${row.correctionOfTransactionId}` : isReversal ? `عكس للسجل #${row.reversalOfTransactionId}` : "حركة أصلية"}</td></tr>; }) : <tr><td colSpan={6} className="p-10 text-center text-slate-400">لا توجد حركات فعّالة للعرض.</td></tr>}</tbody></table></div></CardContent></Card>
+    <Card className="border-0 shadow-sm"><CardHeader><CardTitle className="flex items-center gap-2 text-base"><Coins className="h-5 w-5 text-[#139f95]" />تفاصيل allocations</CardTitle></CardHeader><CardContent><div className="overflow-x-auto"><table className="w-full min-w-[680px] text-right text-sm"><caption className="sr-only">تفاصيل allocations المعتمدة</caption><thead><tr className="border-b border-slate-100 text-xs text-slate-400"><th className="p-3">التخصيص</th><th className="p-3">الدفعة</th><th className="p-3">العقد</th><th className="p-3">الفئة</th><th className="p-3">الأولوية</th><th className="p-3">المبلغ</th></tr></thead><tbody>{allocations.length ? allocations.map((row) => <tr key={row.id} className="border-b border-slate-50 last:border-0"><td className="p-3 font-mono text-xs">#{row.id}</td><td className="p-3 text-slate-600">{row.paymentId ? `#${row.paymentId}` : "—"}</td><td className="p-3 text-slate-600">{row.contractId ? `#${row.contractId}` : "—"}</td><td className="p-3 font-semibold text-slate-700">{allocationLabels[row.allocationType] ?? row.allocationType}</td><td className="p-3 text-slate-500">{row.priority}</td><td className="p-3 font-black text-[#0c8f87]">{money(row.amount)}</td></tr>) : <tr><td colSpan={6} className="p-10 text-center text-slate-400">لا توجد allocations مرتبطة بدفعات معتمدة.</td></tr>}</tbody></table></div></CardContent></Card>
+    <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h2 className="text-xl font-bold">التقرير السنوي</h2>
+        <div className="flex items-center gap-3">
+          <Button variant="outline" onClick={() => setSelectedYear(year => year - 1)}>السنة السابقة</Button>
+          <span className="text-lg font-bold tabular-nums">{selectedYear}</span>
+          <Button variant="outline" onClick={() => setSelectedYear(year => year + 1)}>السنة التالية</Button>
+        </div>
+      </div>
+      {annualLoading ? (
+        <p className="text-slate-500">جارٍ التحميل...</p>
+      ) : annualReport ? (
+        <>
+          <div className="mb-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-lg bg-green-50 p-3">
+              <p className="text-xs text-green-700">إجمالي الإيرادات</p>
+              <p className="text-lg font-bold text-green-900">{annualReport.totals.revenues.toFixed(2)} ر.س</p>
+            </div>
+            <div className="rounded-lg bg-red-50 p-3">
+              <p className="text-xs text-red-700">إجمالي المصروفات</p>
+              <p className="text-lg font-bold text-red-900">{annualReport.totals.expenses.toFixed(2)} ر.س</p>
+            </div>
+            <div className="rounded-lg bg-blue-50 p-3">
+              <p className="text-xs text-blue-700">إجمالي الدفعات</p>
+              <p className="text-lg font-bold text-blue-900">{annualReport.totals.payments.toFixed(2)} ر.س</p>
+            </div>
+            <div className={`rounded-lg p-3 ${annualReport.totals.net >= 0 ? "bg-emerald-50" : "bg-rose-50"}`}>
+              <p className={`text-xs ${annualReport.totals.net >= 0 ? "text-emerald-700" : "text-rose-700"}`}>الصافي</p>
+              <p className={`text-lg font-bold ${annualReport.totals.net >= 0 ? "text-emerald-900" : "text-rose-900"}`}>
+                {annualReport.totals.net.toFixed(2)} ر.س
+              </p>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-right text-sm">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="p-2">الدورة</th>
+                  <th className="p-2">من</th>
+                  <th className="p-2">إلى</th>
+                  <th className="p-2">الإيرادات</th>
+                  <th className="p-2">المصروفات</th>
+                  <th className="p-2">الدفعات</th>
+                  <th className="p-2">الصافي</th>
+                </tr>
+              </thead>
+              <tbody>
+                {annualReport.monthly.map(month => (
+                  <tr key={month.label} className="border-t hover:bg-slate-50">
+                    <td className="p-2 font-medium">{month.label}</td>
+                    <td className="p-2 text-slate-600">{month.cycleStart}</td>
+                    <td className="p-2 text-slate-600">{month.cycleEnd}</td>
+                    <td className="p-2 text-green-700">{month.revenues.toFixed(2)}</td>
+                    <td className="p-2 text-red-700">{month.expenses.toFixed(2)}</td>
+                    <td className="p-2">{month.payments.toFixed(2)}</td>
+                    <td className={`p-2 font-bold ${month.net >= 0 ? "text-green-700" : "text-red-700"}`}>
+                      {month.net.toFixed(2)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="bg-slate-100 font-bold">
+                <tr>
+                  <td className="p-2" colSpan={3}>الإجمالي السنوي</td>
+                  <td className="p-2 text-green-800">{annualReport.totals.revenues.toFixed(2)}</td>
+                  <td className="p-2 text-red-800">{annualReport.totals.expenses.toFixed(2)}</td>
+                  <td className="p-2">{annualReport.totals.payments.toFixed(2)}</td>
+                  <td className={`p-2 ${annualReport.totals.net >= 0 ? "text-green-800" : "text-red-800"}`}>
+                    {annualReport.totals.net.toFixed(2)}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </>
+      ) : (
+        <p className="text-slate-500">لا توجد بيانات لهذه السنة.</p>
+      )}
+    </section>
+  </div></DashboardLayout>;
 }

@@ -1,3 +1,5 @@
+import { calculateMileageCharge } from "./mileageCharges";
+
 export function calculateOilMaintenance(input: {
   currentMileage: number;
   lastOilChangeMileage?: number | null;
@@ -39,10 +41,19 @@ export function mileageWarningMessage(input: ReturnType<typeof calculateOilMaint
 }
 
 export function calculateExtraMileageCharge(input: { currentMileage: number; startingMileage: number; allowedMileage: number; rate?: number }) {
-  const consumed = Math.max(0, Math.trunc(input.currentMileage) - Math.trunc(input.startingMileage));
-  const extraMileage = Math.max(0, consumed - Math.max(0, Math.trunc(input.allowedMileage)));
-  const rate = input.rate ?? 0.5;
-  return { consumed, extraMileage, charge: extraMileage * rate };
+  const result = calculateMileageCharge({
+    startMileage: input.startingMileage,
+    endMileage: input.currentMileage,
+    rentalDays: 0,
+    scope: "internal",
+    allowedMileage: input.allowedMileage,
+    rate: input.rate,
+  });
+  return {
+    consumed: result.consumed,
+    extraMileage: result.excess,
+    charge: Number(result.amount),
+  };
 }
 
 export function hasOilOverride(details?: string | null) {

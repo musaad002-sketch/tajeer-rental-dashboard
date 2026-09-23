@@ -8,6 +8,8 @@ type MileageInput = {
   endMileage: number | string;
   rentalDays: number;
   scope: ContractMileageScope;
+  allowedMileage?: number | null;
+  rate?: number;
 };
 
 function nonNegativeInteger(value: number | string) {
@@ -20,9 +22,14 @@ export function calculateMileageCharge(input: MileageInput) {
   const endMileage = nonNegativeInteger(input.endMileage);
   const rentalDays = Math.max(0, Math.floor(Number(input.rentalDays) || 0));
   const consumed = Math.max(0, endMileage - startMileage);
-  const allowed = input.scope === "internal" ? rentalDays * INTERNAL_DAILY_MILEAGE_LIMIT : null;
+  const allowed = input.allowedMileage !== undefined
+    ? (input.allowedMileage == null ? null : Math.max(0, Math.trunc(Number(input.allowedMileage) || 0)))
+    : input.scope === "internal"
+      ? rentalDays * INTERNAL_DAILY_MILEAGE_LIMIT
+      : null;
   const excess = allowed == null ? 0 : Math.max(0, consumed - allowed);
-  const amount = excess * EXCESS_MILEAGE_RATE;
+  const rate = input.rate ?? EXCESS_MILEAGE_RATE;
+  const amount = excess * rate;
 
   return {
     startMileage,
@@ -30,7 +37,7 @@ export function calculateMileageCharge(input: MileageInput) {
     consumed,
     allowed,
     excess,
-    rate: EXCESS_MILEAGE_RATE,
+    rate,
     amount: amount.toFixed(2),
     due: excess > 0,
   };

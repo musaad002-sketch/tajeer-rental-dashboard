@@ -10,6 +10,14 @@ describe("calculateContractBalances", () => {
     });
   });
 
+  it("does not count the original contract total twice after partial payments and delay", () => {
+    expect(calculateContractBalances({ baseTotal: "900", delayTotal: "400", paidAmount: "650" })).toMatchObject({
+      previousOutstanding: "250.00",
+      currentOutstanding: "400.00",
+      grandOutstanding: "650.00",
+    });
+  });
+
   it("يضع رسوم التأخير في الرصيد الحالي بعد سداد الرصيد السابق أولاً", () => {
     expect(calculateContractBalances({ baseTotal: "100", delayTotal: "200", paidAmount: "100" })).toMatchObject({
       previousOutstanding: "0.00",
@@ -26,4 +34,3 @@ describe("calculateContractBalances", () => {
     });
   });
 });
-

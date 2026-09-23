@@ -15,6 +15,22 @@ export function isContractOverdue(expectedReturnDate: Date, today = new Date()) 
   return current > due;
 }
 
+export function isValidRentalPeriod(start: Date, end: Date) {
+  return start.getTime() < end.getTime();
+}
+
+export function hasRentalPeriodOverlap(
+  existingStart: Date,
+  existingEnd: Date,
+  requestedStart: Date,
+  requestedEnd: Date
+) {
+  return (
+    existingStart.getTime() < requestedEnd.getTime() &&
+    requestedStart.getTime() < existingEnd.getTime()
+  );
+}
+
 export function isVehicleAvailable(state: FleetState, activeContractCount = 0, openMaintenanceCount = 0) {
   return state === "available" && activeContractCount === 0 && openMaintenanceCount === 0;
 }

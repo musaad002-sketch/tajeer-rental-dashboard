@@ -32,8 +32,8 @@ describe("operations.record", () => {
     expect(createMock).toHaveBeenCalledOnce();
     expect(createMock).toHaveBeenCalledWith(expect.objectContaining({ notes: "تسليم المفتاح عند الإرجاع", createdBy: 7 }));
     expect(recordMock).not.toHaveBeenCalled();
-    await caller.operations.record({ contractNumber: "1012", operation: "payment", amount: "100" });
-    expect(recordMock).toHaveBeenCalledWith({ contractNumber: "1012", operation: "payment", amount: "100", createdBy: 7 });
+    await caller.operations.record({ contractNumber: "1012", operation: "payment", amount: "100", paymentMethod: "cash" });
+    expect(recordMock).toHaveBeenCalledWith({ contractNumber: "1012", operation: "payment", amount: "100", paymentMethod: "cash", createdBy: 7 });
   });
 
   it("keeps extension and return as separate operations while resolving the visible number", async () => {
@@ -80,13 +80,20 @@ describe("operations.record", () => {
   });
 
 
-it("passes fee and rate update operations with their financial amount", async () => {
+it("passes fee operations and rejects rate updates", async () => {
   recordMock.mockClear();
   const caller = appRouter.createCaller(context);
   await caller.operations.record({ contractNumber: "1011", operation: "additional_fee", amount: "75", details: "تنظيف إضافي" });
-  await caller.operations.record({ contractNumber: "1011", operation: "rate_update", amount: "220", details: "سعر موسمي" });
+  await expect(caller.operations.record({ contractNumber: "1011", operation: "rate_update", amount: "220", details: "سعر موسمي" })).rejects.toThrow("تعديل سعر التأجير غير مسموح");
   expect(recordMock).toHaveBeenNthCalledWith(1, { contractNumber: "1011", operation: "additional_fee", amount: "75", details: "تنظيف إضافي", createdBy: 7 });
-  expect(recordMock).toHaveBeenNthCalledWith(2, { contractNumber: "1011", operation: "rate_update", amount: "220", details: "سعر موسمي", createdBy: 7 });
+  expect(recordMock).toHaveBeenCalledOnce();
+});
+
+it("rejects previous contract payments", async () => {
+  recordMock.mockClear();
+  const caller = appRouter.createCaller(context);
+  await expect(caller.operations.record({ contractNumber: "1011", operation: "payment", amount: "220", paymentMethod: "cash", paymentException: "previous_contract", exceptionReason: "اختبار" })).rejects.toThrow("سداد عقد سابق غير مسموح");
+  expect(recordMock).not.toHaveBeenCalled();
 });
 
 

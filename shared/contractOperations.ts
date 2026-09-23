@@ -13,6 +13,39 @@ export function validateVehicleSwap(currentVehicleId: number, replacementVehicle
   return { ok: true as const };
 }
 
+export function canSwapVehicleByThreshold(input: {
+  contractTotal: string | number;
+  previousOutstanding: string | number;
+  currentOutstanding: string | number;
+  excessMileageOutstanding?: string | number;
+  includeExcessMileage?: boolean;
+}) {
+  const total = Number(input.contractTotal);
+  if (!Number.isFinite(total) || total <= 0) {
+    return { allowed: false as const, reason: "قيمة العقد غير صالحة" };
+  }
+
+  const previous = Math.max(0, Number(input.previousOutstanding) || 0);
+  const current = Math.max(0, Number(input.currentOutstanding) || 0);
+  const excess = input.includeExcessMileage
+    ? Math.max(0, Number(input.excessMileageOutstanding) || 0)
+    : 0;
+
+  const threshold = total / 3;
+  const owed = previous + current + excess;
+
+  if (owed > threshold) {
+    return {
+      allowed: false as const,
+      reason: `إجمالي المستحقات (${owed.toFixed(2)} ر.س) يتجاوز ثلث قيمة العقد (${threshold.toFixed(2)} ر.س)`,
+      owed,
+      threshold,
+    };
+  }
+
+  return { allowed: true as const, owed, threshold };
+}
+
 export function buildOperationEffects(operation: ContractOperationType, amount = "0") {
   return {
     contractStatus: operation === "suspend" ? "suspended" : operation === "close" ? "closed" : operation === "return" ? "returned" : undefined,

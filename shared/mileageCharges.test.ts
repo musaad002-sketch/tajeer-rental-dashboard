@@ -23,4 +23,12 @@ describe("calculateMileageCharge", () => {
     expect(result.excess).toBe(0);
     expect(result.due).toBe(false);
   });
+
+  it("treats zero as a valid numeric starting reading", () => {
+    const result = calculateMileageCharge({ startMileage: 0, endMileage: 400, rentalDays: 2, scope: "internal" });
+    expect(result.consumed).toBe(400);
+    expect(result.allowed).toBe(300);
+    expect(result.excess).toBe(100);
+    expect(result.amount).toBe("50.00");
+  });
 });

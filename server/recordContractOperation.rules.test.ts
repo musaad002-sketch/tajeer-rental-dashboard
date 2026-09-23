@@ -7,10 +7,12 @@ vi.mock("drizzle-orm/mysql2", () => ({ drizzle: vi.fn(() => fakeDb) }));
 import { recordContractOperation } from "./db";
 
 function selectChain<T>(result: T) {
-  const chain: any = { from: vi.fn(), where: vi.fn(), limit: vi.fn() };
+  const chain: any = { from: vi.fn(), where: vi.fn(), limit: vi.fn(), for: vi.fn() };
   chain.from.mockReturnValue(chain);
   chain.where.mockReturnValue(chain);
-  chain.limit.mockResolvedValue(result);
+  chain.limit.mockReturnValue(chain);
+  chain.for.mockResolvedValue(result);
+  chain.then = (resolve: (value: T) => unknown) => Promise.resolve(result).then(resolve);
   return chain;
 }
 
@@ -84,18 +86,74 @@ describe("recordContractOperation guardrails", () => {
   it("rejects extension when arrears are not fully paid", async () => {
     process.env.DATABASE_URL = "mysql://test";
     fakeDb.select.mockReset();
-    fakeDb.select.mockImplementation(() => selectChain([{
-      id: 704,
-      customerId: 9,
-      vehicleId: 12,
-      status: "overdue",
-      startDate: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
-      expectedReturnDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
-      rentalAmount: "300.00",
-      totalAmount: "3000.00",
-      paidAmount: "0.00",
-      type: "daily",
-    }]));
+    let selectCall = 0;
+    fakeDb.select.mockImplementation(() => {
+      selectCall += 1;
+      return selectChain(
+        selectCall === 1
+          ? [{
+              id: 704,
+              customerId: 9,
+              vehicleId: 12,
+              status: "overdue",
+              startDate: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
+              expectedReturnDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+              rentalAmount: "300.00",
+              totalAmount: "3000.00",
+              paidAmount: "0.00",
+              type: "daily",
+            }]
+          : selectCall === 2
+            ? [{ id: 12 }]
+            : selectCall === 3
+            ? [{
+              id: 12,
+              status: "available",
+              mileage: 0,
+              plateNumber: "TEST-704",
+            }]
+            : []
+      );
+    });
 
     await expect(recordContractOperation({ contractNumber: "1704", operation: "extension", extensionDays: 3, extensionPaymentAmount: "100.00", extensionPaymentMethod: "cash" })).rejects.toThrow(/لا يمكن تمديد العقد قبل سداد المتأخرات/);
   });
+
+
+describe("lifecycle odometer requirements", () => {
+  it.each(["close", "vehicle_swap", "return", "suspend"] as const)(
+    "rejects %s without a vehicle mileage reading",
+    async operation => {
+      process.env.DATABASE_URL = "mysql://test";
+      fakeDb.select.mockReset();
+      let selectCall = 0;
+      fakeDb.select.mockImplementation(() => {
+        selectCall += 1;
+        return selectChain(
+          selectCall === 1
+            ? [{
+                id: 705,
+                customerId: 9,
+                vehicleId: 12,
+                status: "active",
+                startDate: new Date(),
+                expectedReturnDate: new Date(Date.now() + 86400000),
+                rentalAmount: "300.00",
+                totalAmount: "300.00",
+                paidAmount: "300.00",
+                startMileage: 100,
+                type: "daily",
+              }]
+            : []
+        );
+      });
+
+      await expect(
+        recordContractOperation({
+          contractNumber: "1705",
+          operation,
+        })
+      ).rejects.toThrow("يجب إدخال العداد الحالي قبل تنفيذ هذه العملية");
+    }
+  );
+});

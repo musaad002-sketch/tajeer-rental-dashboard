@@ -14,6 +14,8 @@ export function calculateCloseSettlement(input: {
   closedAt: Date | string;
   rentalAmount: string | number;
   type: "daily" | "monthly";
+  contractScope?: "domestic_limited" | "domestic_open" | "international";
+  days?: number;
   paidAmount: string | number;
   excessMileageBalance?: string | number;
 }) {
@@ -29,6 +31,8 @@ export function calculateCloseSettlement(input: {
     expectedReturnDate: input.expectedReturnDate,
     rentalAmount: input.rentalAmount,
     type: input.type,
+    contractScope: input.contractScope,
+    days: input.days,
     actualReturnDate: input.closedAt,
     asOf: new Date(input.closedAt),
   });
@@ -39,7 +43,7 @@ export function calculateCloseSettlement(input: {
     excessMileageBalance: input.excessMileageBalance,
   });
   const paidAmount = Math.max(0, Number(input.paidAmount) || 0);
-  const amountDueThroughClose = Number(totals.grandTotal) + Math.max(0, Number(input.excessMileageBalance) || 0);
+  const amountDueThroughClose = Number(totals.amountDueThroughDate) + Math.max(0, Number(input.excessMileageBalance) || 0);
   const customerCredit = Math.min(paidAmount, Math.max(0, paidAmount - amountDueThroughClose));
   const hasSurplusPaidDays = earlySettlement.remainingDays > 0 && paidAmount > Number(totals.baseTotal);
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateContractAmounts, calculateLateAmount, lateDays, monthlyReturnDate, rentalDays } from "./contractCalculation";
+import { calculateContractAmounts, calculateLateAmount, calculateMonthlyEntitlements, lateDays, monthlyReturnDate, rentalDays } from "./contractCalculation";
 
 describe("contract calculation", () => {
   it("recalculates days and total when the expected return date changes", () => {
@@ -10,6 +10,17 @@ describe("contract calculation", () => {
 
   it("uses monthly units for monthly contracts", () => {
     expect(calculateContractAmounts("2026-08-28", "2026-10-01", "3000", "0", "monthly")).toEqual({ days: 60, units: 2, rate: 3000, total: "6000.00", paid: "0.00", remaining: "6000.00" });
+  });
+
+  it("counts rental days as complete 24-hour periods from the start time", () => {
+    expect(rentalDays("2026-09-01T10:30:00", "2026-09-02T10:29:59")).toBe(1);
+    expect(rentalDays("2026-09-01T10:30:00", "2026-09-02T10:30:00")).toBe(1);
+    expect(rentalDays("2026-09-01T10:30:00", "2026-09-03T10:30:00")).toBe(2);
+  });
+
+  it("separates monthly entitlements into independent 30-day periods", () => {
+    expect(calculateMonthlyEntitlements("2026-01-01T09:00:00", "2026-03-02T09:00:00", "3000")).toHaveLength(2);
+    expect(calculateMonthlyEntitlements("2026-01-01T09:00:00", "2026-03-02T09:00:00", "3000")[1]).toMatchObject({ month: 2, amount: "3000.00" });
   });
 
   it("calculates monthly return dates and clamps short months", () => {
@@ -25,21 +36,27 @@ describe("contract calculation", () => {
 
   it("calculates daily late amount separately from the unpaid balance", () => {
     const asOf = new Date("2026-09-03T12:00:00");
-    expect(lateDays("2026-09-01", asOf)).toBe(2);
-    expect(calculateLateAmount("2026-09-01", "180", "daily", asOf)).toEqual({ days: 2, amount: "360.00" });
+    expect(lateDays("2026-09-01T12:00:00", asOf)).toBe(2);
+    expect(calculateLateAmount("2026-09-01T12:00:00", "180", "daily", asOf)).toEqual({ days: 2, amount: "360.00" });
+  });
+
+  it("does not count the grace period as delay and starts delay afterwards", () => {
+    const expected = "2026-09-01T10:00:00";
+    expect(lateDays(expected, new Date("2026-09-01T13:59:59"), 4)).toBe(0);
+    expect(lateDays(expected, new Date("2026-09-02T10:00:01"), 4)).toBe(1);
+    expect(calculateLateAmount(expected, "180", "daily", new Date("2026-09-02T10:00:01"), 4)).toEqual({ days: 1, amount: "180.00" });
   });
 
   it("calculates monthly late amount at monthly rate divided by 30", () => {
     const asOf = new Date("2026-09-04T12:00:00");
-    expect(calculateLateAmount("2026-09-01", "3000", "monthly", asOf)).toEqual({ days: 3, amount: "300.00" });
+    expect(calculateLateAmount("2026-09-01T12:00:00", "3000", "monthly", asOf)).toEqual({ days: 3, amount: "300.00" });
   });
 
   it("returns zero late amount on or before the expected return date", () => {
     const asOf = new Date("2026-09-01T12:00:00");
-    expect(calculateLateAmount("2026-09-01", "180", "daily", asOf)).toEqual({ days: 0, amount: "0.00" });
+    expect(calculateLateAmount("2026-09-01T12:00:00", "180", "daily", asOf)).toEqual({ days: 0, amount: "0.00" });
   });
 });
-
 
 describe("financial distress", () => {
   it("flags an overdue daily contract when paid amount is below accrued rent", async () => {
@@ -58,7 +75,6 @@ describe("financial distress", () => {
     expect(isFinanciallyDistressed({ startDate: "2026-08-01", unitRate: "100", type: "daily", paidAmount: "500", asOf: new Date("2026-08-05T12:00:00") })).toBe(false);
   });
 });
-
 
 describe("contract extension", () => {
   it("extends the existing return date without changing the contract identity", async () => {

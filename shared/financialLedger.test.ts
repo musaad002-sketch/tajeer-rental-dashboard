@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allocateFinancialPayment } from "./financialLedger";
+import { allocateFinancialPayment, calculateFinancialPaymentAllocations } from "./financialLedger";
 
 describe("allocateFinancialPayment", () => {
   it("pays previous balance before delay and later balances", () => {
@@ -28,5 +28,28 @@ describe("allocateFinancialPayment", () => {
     const result = allocateFinancialPayment({ previousBalance: 0, delayBalance: 0, excessMileageBalance: 125, payment: 80 });
     expect(result.paymentToExcessMileage).toBe("80.00");
     expect(result.excessMileageBalance).toBe("45.00");
+  });
+
+  it("returns the canonical previous, overdue, mileage, and other order", () => {
+    expect(calculateFinancialPaymentAllocations(1000, {
+      remaining_contract_balance: 100,
+      current_late_charges: 200,
+      excess_mileage: 300,
+      other_liability: 400,
+    })).toEqual([
+      { allocationType: "remaining_contract_balance", priority: 1, amount: "100.00" },
+      { allocationType: "current_late_charges", priority: 2, amount: "200.00" },
+      { allocationType: "excess_mileage", priority: 3, amount: "300.00" },
+      { allocationType: "other_liability", priority: 4, amount: "400.00" },
+    ]);
+  });
+
+  it.each([0, -1])("rejects a non-positive payment amount: %s", amount => {
+    expect(() => calculateFinancialPaymentAllocations(amount, {
+      remaining_contract_balance: 100,
+      current_late_charges: 100,
+      excess_mileage: 100,
+      other_liability: 100,
+    })).toThrow("أكبر من صفر");
   });
 });

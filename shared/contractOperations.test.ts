@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildOperationEffects, getContractReference, validateVehicleSwap } from "./contractOperations";
+import { buildOperationEffects, canSwapVehicleByThreshold, getContractReference, validateVehicleSwap } from "./contractOperations";
 
 describe("قواعد العمليات المرتبطة برقم العقد", () => {
   it("يفضل رقم العقد الظاهر على المعرّف الداخلي عند توفرهما", () => {
@@ -24,6 +24,34 @@ describe("صلاحية تبديل السيارة", () => {
     expect(validateVehicleSwap(5, 5, true)).toEqual({ ok: false, reason: "اختر سيارة بديلة مختلفة" });
     expect(validateVehicleSwap(5, 6, false)).toEqual({ ok: false, reason: "السيارة البديلة غير متاحة" });
     expect(validateVehicleSwap(5, 6, true)).toEqual({ ok: true });
+  });
+
+  it("يمنع تبديل السيارة عندما تتجاوز المستحقات ثلث قيمة العقد", () => {
+    expect(
+      canSwapVehicleByThreshold({
+        contractTotal: 3000,
+        previousOutstanding: 500,
+        currentOutstanding: 700,
+      })
+    ).toMatchObject({ allowed: false, owed: 1200, threshold: 1000 });
+
+    expect(
+      canSwapVehicleByThreshold({
+        contractTotal: 3000,
+        previousOutstanding: 500,
+        currentOutstanding: 700,
+        excessMileageOutstanding: 200,
+        includeExcessMileage: true,
+      })
+    ).toMatchObject({ allowed: false, owed: 1400, threshold: 1000 });
+
+    expect(
+      canSwapVehicleByThreshold({
+        contractTotal: 3000,
+        previousOutstanding: 300,
+        currentOutstanding: 400,
+      })
+    ).toMatchObject({ allowed: true, owed: 700, threshold: 1000 });
   });
 });
 

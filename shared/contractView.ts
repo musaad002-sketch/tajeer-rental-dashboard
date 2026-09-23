@@ -2,14 +2,14 @@ import { formatGregorianDate } from "./dateFormat";
 import { calculateContractTotals } from "./contractTotals";
 import { calculateContractBalances } from "./contractBalances";
 type ContractRow = {
-  contract: { contractNumber: string; expectedReturnDate: Date | string; status: string; totalAmount: string; paidAmount: string; rentalAmount?: string | number; type?: "daily" | "monthly"; contractScope?: "domestic_limited" | "domestic_open" | "international" | null; actualReturnDate?: Date | string | null };
+  contract: { contractNumber: string; expectedReturnDate: Date | string; status: string; totalAmount: string; paidAmount: string; rentalAmount?: string | number; type?: "daily" | "monthly"; contractScope?: "domestic_limited" | "domestic_open" | "international" | null; days?: number; actualReturnDate?: Date | string | null };
   customer?: { fullName: string } | null;
   vehicle?: { make: string; model: string; plateNumber?: string } | null;
 };
 
 export function formatContractRows(rows: ContractRow[]) {
   return rows.map(({ contract, customer, vehicle }) => {
-    const totals = contract.rentalAmount != null && contract.type ? calculateContractTotals({ baseTotal: contract.totalAmount, expectedReturnDate: contract.expectedReturnDate, rentalAmount: contract.rentalAmount, type: contract.type, actualReturnDate: contract.actualReturnDate }) : { baseTotal: contract.totalAmount, delayDays: 0, delayTotal: "0.00", grandTotal: contract.totalAmount };
+    const totals = contract.rentalAmount != null && contract.type ? calculateContractTotals({ baseTotal: contract.totalAmount, expectedReturnDate: contract.expectedReturnDate, rentalAmount: contract.rentalAmount, type: contract.type, contractScope: contract.contractScope ?? undefined, days: contract.days, actualReturnDate: contract.actualReturnDate }) : { baseTotal: contract.totalAmount, contractReferenceTotal: contract.totalAmount, delayDays: 0, delayTotal: "0.00", amountDueThroughDate: contract.totalAmount, grandTotal: "0.00" };
     const balances = calculateContractBalances({ baseTotal: totals.baseTotal, delayTotal: totals.delayTotal, paidAmount: contract.paidAmount });
     return {
     id: `#${contract.contractNumber}`,

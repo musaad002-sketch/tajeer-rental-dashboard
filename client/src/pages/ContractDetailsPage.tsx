@@ -1,48 +1,478 @@
-import { formatGregorianDate, formatGregorianDateTime } from "@shared/dateFormat";
+import {
+  formatGregorianDate,
+  formatGregorianDateTime,
+} from "@shared/dateFormat";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { trpc } from "@/lib/trpc";
-import { ArrowRight, CarFront, ClipboardList, Download, FileText, History, UserRound, WalletCards } from "lucide-react";
 import { calculateContractTotals } from "@shared/contractTotals";
 import { calculateContractBalances } from "@shared/contractBalances";
+import {
+  ArrowRight,
+  CarFront,
+  ClipboardList,
+  Download,
+  FileText,
+  History,
+  UserRound,
+  WalletCards,
+} from "lucide-react";
 import { Link, useLocation } from "wouter";
 import RetroactiveEditPanel from "@/components/RetroactiveEditPanel";
+import { MonthlyInstallmentsTable } from "@/components/MonthlyInstallmentsTable";
 import { useAuth } from "@/_core/hooks/useAuth";
+import { canPerform } from "@shared/permissions";
+import ContractOperationsPanel from "@/components/ContractOperationsPanel";
 
-const statusLabels: Record<string, string> = { active: "ساري", overdue: "متأخر", suspended: "معلق", closed: "مغلق", returned: "مسترجع" };
-const operationLabels: Record<string, string> = { new_contract: "عقد جديد", extension: "تمديد", payment: "دفعة", additional_fee: "رسوم إضافية", rate_update: "تعديل سعر التأجير", vehicle_swap: "تبديل سيارة", suspend: "تعليق", close: "إغلاق", return: "استرجاع" };
-const paymentLabels: Record<string, string> = { cash: "نقدي", network: "شبكة", transfer: "تحويل", mixed: "مختلط" };
+const statusLabels: Record<string, string> = {
+  active: "ساري",
+  overdue: "متأخر",
+  suspended: "معلق",
+  closed: "مغلق",
+  returned: "مسترجع",
+};
+const operationLabels: Record<string, string> = {
+  new_contract: "عقد جديد",
+  extension: "تمديد",
+  payment: "دفعة",
+  additional_fee: "رسوم إضافية",
+  rate_update: "تعديل سعر التأجير",
+  vehicle_swap: "تبديل سيارة",
+  suspend: "تعليق",
+  close: "إغلاق",
+  return: "استرجاع",
+};
+const paymentLabels: Record<string, string> = {
+  cash: "نقدي",
+  network: "شبكة",
+  transfer: "تحويل",
+  mixed: "مختلط",
+};
 
 function formatDate(value: Date | string | null | undefined) {
-  if (!value) return "—";
-  return formatGregorianDate(value);
+  return value ? formatGregorianDate(value) : "—";
 }
 
 function formatDateTime(value: Date | string | null | undefined) {
-  if (!value) return "—";
-  return formatGregorianDateTime(value);
+  return value ? formatGregorianDateTime(value) : "—";
 }
 
 function statusClass(status: string) {
-  return status === "active" ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-50" : status === "overdue" ? "bg-red-50 text-red-700 hover:bg-red-50" : "bg-amber-50 text-amber-700 hover:bg-amber-50";
+  return status === "active"
+    ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-50"
+    : status === "overdue"
+      ? "bg-red-50 text-red-700 hover:bg-red-50"
+      : "bg-amber-50 text-amber-700 hover:bg-amber-50";
 }
 
 export default function ContractDetailsPage() {
   const [location, setLocation] = useLocation();
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
+  const canOperateContract = canPerform(
+    user?.role ?? "user",
+    user?.permissions,
+    "contracts.operate"
+  );
   const id = Number(location.split("/").filter(Boolean).pop());
-  const details = trpc.contracts.details.useQuery({ id }, { enabled: Number.isInteger(id) && id > 0 });
+  const details = trpc.contracts.details.useQuery(
+    { id },
+    { enabled: Number.isInteger(id) && id > 0 }
+  );
   const row = details.data;
-  const paidFromPayments = row?.payments.reduce((sum, payment) => sum + Number(payment.amount), 0) ?? 0;
-  const totals = row?.contract ? calculateContractTotals({ baseTotal: row.contract.totalAmount, expectedReturnDate: row.contract.expectedReturnDate, rentalAmount: row.contract.rentalAmount, type: row.contract.type, actualReturnDate: row.contract.actualReturnDate }) : { baseTotal: "0.00", delayDays: 0, delayTotal: "0.00", grandTotal: "0.00" };
-  const balances = row?.contract ? calculateContractBalances({ baseTotal: totals.baseTotal, delayTotal: totals.delayTotal, paidAmount: row.contract.paidAmount }) : { previousOutstanding: "0.00", currentOutstanding: "0.00", grandOutstanding: "0.00" };
+  const paidFromPayments =
+    row?.payments.reduce((sum, payment) => sum + Number(payment.amount), 0) ??
+    0;
+  const totals = row?.contract
+    ? calculateContractTotals({
+        baseTotal: row.contract.totalAmount,
+        expectedReturnDate: row.contract.expectedReturnDate,
+        rentalAmount: row.contract.rentalAmount,
+        type: row.contract.type,
+        actualReturnDate: row.contract.actualReturnDate,
+      })
+    : {
+        baseTotal: "0.00",
+        delayDays: 0,
+        delayTotal: "0.00",
+        grandTotal: "0.00",
+      };
+  const balances = row?.contract
+    ? calculateContractBalances({
+        baseTotal: totals.baseTotal,
+        delayTotal: totals.delayTotal,
+        paidAmount: row.contract.paidAmount,
+      })
+    : {
+        previousOutstanding: "0.00",
+        currentOutstanding: "0.00",
+        grandOutstanding: "0.00",
+      };
 
-  return <DashboardLayout><div className="mx-auto max-w-5xl space-y-6"><div className="flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-3"><Button variant="ghost" size="icon" aria-label="العودة إلى العقود" onClick={() => setLocation("/contracts/active")}><ArrowRight className="h-5 w-5" /></Button><div><p className="mb-1 text-xs font-bold text-[#139f95]">وحدة العقود</p><h1 className="text-3xl font-black tracking-tight">تفاصيل العقد {row?.contract.contractNumber ? `#${row.contract.contractNumber}` : ""}</h1><p className="mt-2 text-sm text-slate-500">بيانات العقد والدفعات وسجل العمليات في شاشة واحدة.</p></div></div>{row?.contract && <div className="flex flex-wrap gap-2"><a href={`/api/pdf/contract/${row.contract.id}`} target="_blank" rel="noreferrer"><Button variant="outline" className="gap-2"><Download className="h-4 w-4" /> تنزيل العقد PDF</Button></a><Badge className={statusClass(row.contract.status)}>{statusLabels[row.contract.status] ?? row.contract.status}</Badge></div>}</div>{details.isLoading && <Card className="border-0 shadow-sm"><CardContent className="py-16 text-center text-sm text-slate-400">جارٍ تحميل تفاصيل العقد...</CardContent></Card>}{details.error && <Card className="border-0 shadow-sm"><CardContent className="py-16 text-center text-sm text-red-600">تعذر تحميل التفاصيل: {details.error.message}</CardContent></Card>}{!details.isLoading && !details.error && !row && <Card className="border-0 shadow-sm"><CardContent className="py-16 text-center text-sm text-slate-400">لم يتم العثور على هذا العقد.</CardContent></Card>}{row?.contract && <>{isAdmin && <RetroactiveEditPanel contract={row.contract} payments={row.payments} />}<div className="grid gap-4 md:grid-cols-3"><Card className="border-0 shadow-sm"><CardHeader><CardTitle className="flex items-center gap-2 text-base"><ClipboardList className="h-5 w-5 text-[#139f95]" /> بيانات العقد</CardTitle></CardHeader><CardContent className="space-y-3 text-sm"><Info label="رقم العقد" value={`#${row.contract.contractNumber}`} /><Info label="وقت إبرام العقد" value={formatDateTime(row.contract.createdAt)} />{isAdmin && <Info label="منشئ العقد" value={row.contract.createdBy ? `مستخدم #${row.contract.createdBy}` : "غير محدد"} />}<Info label="النوع" value={row.contract.type === "daily" ? "يومي" : "شهري"} /><Info label="نطاق العقد" value={row.contract.contractScope === "domestic_limited" ? "داخلي — 150 كم يومياً" : row.contract.contractScope === "international" ? "خارجي دولي" : "خارجي داخل السعودية — عداد مفتوح"} /><Info label="تاريخ فتح العقد" value={formatDate(row.contract.startDate)} /><Info label="التسليم المتوقع" value={formatDate(row.contract.expectedReturnDate)} /><Info label="التسليم الفعلي" value={formatDate(row.contract.actualReturnDate)} /><Info label="ملاحظات العقد" value={row.contract.notes ?? "بدون ملاحظات"} /></CardContent></Card><Card className="border-0 shadow-sm"><CardHeader><CardTitle className="flex items-center gap-2 text-base"><UserRound className="h-5 w-5 text-[#139f95]" /> العميل</CardTitle></CardHeader><CardContent className="space-y-3 text-sm"><Info label="الاسم" value={row.customer?.fullName ?? "—"} /><Info label="رقم الهوية" value={row.customer?.identityNumber ?? "—"} /><Info label="الجوال" value={row.customer?.phone ?? "—"} />{row.customer && <Link href={`/customers/${row.customer.id}`} className="mt-2 block rounded-lg bg-[#effaf8] px-3 py-2 text-center text-xs font-bold text-[#0c8f87] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#16b4a5]">فتح ملف العميل</Link>}</CardContent></Card><Card className="border-0 shadow-sm"><CardHeader><CardTitle className="flex items-center gap-2 text-base"><CarFront className="h-5 w-5 text-[#139f95]" /> السيارة</CardTitle></CardHeader><CardContent className="space-y-3 text-sm"><Info label="المركبة" value={row.vehicle ? `${row.vehicle.make} ${row.vehicle.model}` : "—"} /><Info label="رقم اللوحة" value={row.vehicle?.plateNumber ?? "—"} /><Info label="الموديل" value={row.vehicle ? String(row.vehicle.modelYear) : "—"} />{row.vehicle && <Link href={`/vehicles/${row.vehicle.id}`} className="mt-2 block rounded-lg bg-[#effaf8] px-3 py-2 text-center text-xs font-bold text-[#0c8f87] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#16b4a5]">فتح ملف السيارة</Link>}</CardContent></Card></div><div className="grid gap-4 md:grid-cols-3"><Card className="border-0 bg-[#0b2747] text-white shadow-sm md:col-span-1"><CardContent className="p-6"><p className="text-sm text-slate-300">إجمالي العقد الأساسي / بعد التمديد</p><p className="mt-2 text-2xl font-black">{totals.baseTotal} ر.س</p><p className="mt-5 text-sm text-slate-300">إجمالي التأخير {totals.delayDays ? `(${totals.delayDays} يوم)` : ""}</p><p className="mt-1 text-xl font-bold text-[#ff9e8f]">{totals.delayTotal} ر.س</p><p className="mt-5 text-sm text-slate-300">المتبقي السابق</p><p className="mt-1 text-xl font-bold text-[#8fe0d7]">{balances.previousOutstanding} ر.س</p><p className="mt-5 text-sm text-slate-300">المتبقي الحالي (تأخير)</p><p className="mt-1 text-xl font-bold text-[#ff9e8f]">{balances.currentOutstanding} ر.س</p><p className="mt-5 text-sm text-slate-300">إجمالي المتبقي</p><p className="mt-1 text-2xl font-black text-[#f2c35e]">{balances.grandOutstanding} ر.س</p><p className="mt-5 text-sm text-slate-300">المدفوع</p><p className="mt-1 text-xl font-bold text-[#8fe0d7]">{row.contract.paidAmount} ر.س</p></CardContent></Card><Card className="border-0 shadow-sm md:col-span-2"><CardHeader><CardTitle className="flex items-center gap-2 text-base"><WalletCards className="h-5 w-5 text-[#d99c1d]" /> الدفعات ({row.payments.length})</CardTitle><p className="text-xs text-slate-400">إجمالي الدفعات المسجلة فعلياً: {paidFromPayments.toFixed(2)} ر.س</p></CardHeader><CardContent>{row.payments.length === 0 ? <p className="py-6 text-sm text-slate-400">لا توجد دفعات مسجلة لهذا العقد.</p> : <div className="space-y-2">{row.payments.map((payment) => <div key={payment.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 px-4 py-3 text-sm"><div><p className="font-bold text-slate-700">سند قبض #{payment.id}</p><p className="mt-1 text-xs text-slate-400">{formatDate(payment.createdAt)} · {paymentLabels[payment.method] ?? payment.method}</p>{payment.notes && <p className="mt-1 text-xs text-slate-500">ملاحظات: {payment.notes}</p>}</div><div className="flex items-center gap-3"><span className="font-black text-[#d99c1d]">{payment.amount} ر.س</span><a href={`/api/pdf/receipt/${payment.id}`} target="_blank" rel="noreferrer" aria-label={`تنزيل سند القبض رقم ${payment.id}`}><Button variant="ghost" size="icon" title="تنزيل سند القبض"><FileText className="h-4 w-4" /></Button></a></div></div>)}</div>}</CardContent></Card></div><Card className="border-0 shadow-sm"><CardHeader><CardTitle className="flex items-center gap-2 text-base"><History className="h-5 w-5 text-[#139f95]" /> سجل العمليات ({row.operations.length})</CardTitle></CardHeader><CardContent>{row.operations.length === 0 ? <p className="py-6 text-sm text-slate-400">لا توجد عمليات مسجلة لهذا العقد.</p> : <div className="space-y-2">{row.operations.map((operation) => <div key={operation.id} className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 py-3 text-sm last:border-0"><div><p className="font-bold text-slate-700">{operationLabels[operation.operation] ?? operation.operation}</p><p className="mt-1 text-xs text-slate-400">{formatDateTime(operation.createdAt)}{isAdmin ? ` · المنفذ: ${operation.createdByName}` : ""} · {operation.details ?? "بدون ملاحظات"}</p>{operation.previousVehicle || operation.currentVehicle ? <p className="mt-1 text-xs font-semibold text-[#0c8f87]">{operation.previousVehicle ? `من ${operation.previousVehicle.plateNumber}` : ""}{operation.previousVehicle && operation.currentVehicle ? " إلى " : ""}{operation.currentVehicle ? `${operation.currentVehicle.plateNumber}` : ""}</p> : null}</div><span className="font-semibold text-[#d99c1d]">{operation.amount} ر.س</span></div>)}</div>}</CardContent></Card></>}</div></DashboardLayout>;
+  return (
+    <DashboardLayout>
+      <div dir="rtl" className="mx-auto max-w-5xl space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="العودة إلى العقود"
+              onClick={() => setLocation("/contracts/active")}
+            >
+              <ArrowRight className="h-5 w-5" />
+            </Button>
+            <div>
+              <p className="mb-1 text-xs font-bold text-[#139f95]">
+                وحدة العقود
+              </p>
+              <h1 className="text-3xl font-black tracking-tight">
+                تفاصيل العقد{" "}
+                {row?.contract.contractNumber
+                  ? `#${row.contract.contractNumber}`
+                  : ""}
+              </h1>
+              <p className="mt-2 text-sm text-slate-500">
+                بيانات العقد والدفعات وسجل العمليات في شاشة واحدة.
+              </p>
+            </div>
+          </div>
+          {row?.contract && (
+            <div className="flex flex-wrap gap-2">
+              <a
+                href={`/api/pdf/contract/${row.contract.id}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <Button variant="outline" className="gap-2">
+                  <Download className="h-4 w-4" /> تنزيل العقد PDF
+                </Button>
+              </a>
+              <Badge className={statusClass(row.contract.status)}>
+                {statusLabels[row.contract.status] ?? row.contract.status}
+              </Badge>
+            </div>
+          )}
+        </div>
+        {details.isLoading && (
+          <Card className="border-0 shadow-sm">
+            <CardContent className="py-16 text-center text-sm text-slate-400">
+              جارٍ تحميل تفاصيل العقد...
+            </CardContent>
+          </Card>
+        )}
+        {details.error && (
+          <Card className="border-0 shadow-sm">
+            <CardContent className="py-16 text-center text-sm text-red-600">
+              تعذر تحميل التفاصيل: {details.error.message}
+            </CardContent>
+          </Card>
+        )}
+        {!details.isLoading && !details.error && !row && (
+          <Card className="border-0 shadow-sm">
+            <CardContent className="py-16 text-center text-sm text-slate-400">
+              لم يتم العثور على هذا العقد.
+            </CardContent>
+          </Card>
+        )}
+        {row?.contract && (
+          <>
+            {canOperateContract && <ContractOperationsPanel />}
+            {isAdmin && (
+              <RetroactiveEditPanel
+                contract={row.contract}
+                payments={row.payments}
+              />
+            )}
+            <div className="grid gap-4 md:grid-cols-3">
+              <Card className="border-0 shadow-sm">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <ClipboardList className="h-5 w-5 text-[#139f95]" /> بيانات
+                    العقد
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3 text-sm">
+                  <Info
+                    label="رقم العقد"
+                    value={`#${row.contract.contractNumber}`}
+                  />
+                  <Info
+                    label="وقت إبرام العقد"
+                    value={formatDateTime(row.contract.createdAt)}
+                  />
+                  {isAdmin && (
+                    <Info
+                      label="منشئ العقد"
+                      value={
+                        row.contract.createdBy
+                          ? `مستخدم #${row.contract.createdBy}`
+                          : "غير محدد"
+                      }
+                    />
+                  )}
+                  <Info
+                    label="النوع"
+                    value={row.contract.type === "daily" ? "يومي" : "شهري"}
+                  />
+                  <Info
+                    label="نطاق العقد"
+                    value={
+                      row.contract.contractScope === "domestic_limited"
+                        ? "داخلي — 150 كم يومياً"
+                        : row.contract.contractScope === "international"
+                          ? "خارجي دولي"
+                          : "خارجي داخل السعودية — عداد مفتوح"
+                    }
+                  />
+                  <Info
+                    label="تاريخ فتح العقد"
+                    value={formatDate(row.contract.startDate)}
+                  />
+                  <Info
+                    label="التسليم المتوقع"
+                    value={formatDate(row.contract.expectedReturnDate)}
+                  />
+                  <Info
+                    label="التسليم الفعلي"
+                    value={formatDate(row.contract.actualReturnDate)}
+                  />
+                  <Info
+                    label="ملاحظات العقد"
+                    value={row.contract.notes ?? "بدون ملاحظات"}
+                  />
+                </CardContent>
+              </Card>
+              <Card className="border-0 shadow-sm">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <UserRound className="h-5 w-5 text-[#139f95]" /> العميل
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3 text-sm">
+                  <Info label="الاسم" value={row.customer?.fullName ?? "—"} />
+                  <Info
+                    label="رقم الهوية"
+                    value={row.customer?.identityNumber ?? "—"}
+                  />
+                  <Info label="الجوال" value={row.customer?.phone ?? "—"} />
+                  {row.customer && (
+                    <Link
+                      href={`/customers/${row.customer.id}`}
+                      className="mt-2 block rounded-lg bg-[#effaf8] px-3 py-2 text-center text-xs font-bold text-[#0c8f87]"
+                    >
+                      فتح ملف العميل
+                    </Link>
+                  )}
+                </CardContent>
+              </Card>
+              <Card className="border-0 shadow-sm">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <CarFront className="h-5 w-5 text-[#139f95]" /> السيارة
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3 text-sm">
+                  <Info
+                    label="المركبة"
+                    value={
+                      row.vehicle
+                        ? `${row.vehicle.make} ${row.vehicle.model}`
+                        : "—"
+                    }
+                  />
+                  <Info
+                    label="رقم اللوحة"
+                    value={row.vehicle?.plateNumber ?? "—"}
+                  />
+                  <Info
+                    label="الموديل"
+                    value={row.vehicle ? String(row.vehicle.modelYear) : "—"}
+                  />
+                  {row.vehicle && (
+                    <Link
+                      href={`/vehicles/${row.vehicle.id}`}
+                      className="mt-2 block rounded-lg bg-[#effaf8] px-3 py-2 text-center text-xs font-bold text-[#0c8f87]"
+                    >
+                      فتح ملف السيارة
+                    </Link>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+            <MonthlyInstallmentsTable
+              contractId={row.contract.id}
+              isMonthly={row.contract.type === "monthly"}
+            />
+            <div className="grid gap-4 md:grid-cols-3">
+              <Card className="border-0 bg-[#0b2747] text-white shadow-sm md:col-span-1">
+                <CardContent className="p-6">
+                  <p className="text-sm text-slate-300">
+                    إجمالي العقد الأساسي / بعد التمديد
+                  </p>
+                  <p className="mt-2 text-2xl font-black">
+                    {totals.baseTotal} ر.س
+                  </p>
+                  <p className="mt-5 text-sm text-slate-300">
+                    إجمالي التأخير{" "}
+                    {totals.delayDays ? `(${totals.delayDays} يوم)` : ""}
+                  </p>
+                  <p className="mt-1 text-xl font-bold text-[#ff9e8f]">
+                    {totals.delayTotal} ر.س
+                  </p>
+                  <p className="mt-5 text-sm text-slate-300">المتبقي السابق</p>
+                  <p className="mt-1 text-xl font-bold text-[#8fe0d7]">
+                    {balances.previousOutstanding} ر.س
+                  </p>
+                  <p className="mt-5 text-sm text-slate-300">
+                    المتبقي الحالي (تأخير)
+                  </p>
+                  <p className="mt-1 text-xl font-bold text-[#ff9e8f]">
+                    {balances.currentOutstanding} ر.س
+                  </p>
+                  <p className="mt-5 text-sm text-slate-300">إجمالي المتبقي</p>
+                  <p className="mt-1 text-2xl font-black text-[#f2c35e]">
+                    {balances.grandOutstanding} ر.س
+                  </p>
+                  <p className="mt-5 text-sm text-slate-300">المدفوع</p>
+                  <p className="mt-1 text-xl font-bold text-[#8fe0d7]">
+                    {row.contract.paidAmount} ر.س
+                  </p>
+                </CardContent>
+              </Card>
+              <Card className="border-0 shadow-sm md:col-span-2">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <WalletCards className="h-5 w-5 text-[#d99c1d]" /> الدفعات (
+                    {row.payments.length})
+                  </CardTitle>
+                  <p className="text-xs text-slate-400">
+                    إجمالي الدفعات المسجلة فعلياً: {paidFromPayments.toFixed(2)}{" "}
+                    ر.س
+                  </p>
+                </CardHeader>
+                <CardContent>
+                  {row.payments.length === 0 ? (
+                    <p className="py-6 text-sm text-slate-400">
+                      لا توجد دفعات مسجلة لهذا العقد.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {row.payments.map(payment => (
+                        <div
+                          key={payment.id}
+                          className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 px-4 py-3 text-sm"
+                        >
+                          <div>
+                            <p className="font-bold text-slate-700">
+                              سند قبض #{payment.id}
+                            </p>
+                            <p className="mt-1 text-xs text-slate-400">
+                              {formatDate(payment.createdAt)} ·{" "}
+                              {paymentLabels[payment.method] ?? payment.method}
+                            </p>
+                            {payment.notes && (
+                              <p className="mt-1 text-xs text-slate-500">
+                                ملاحظات: {payment.notes}
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="font-black text-[#d99c1d]">
+                              {payment.amount} ر.س
+                            </span>
+                            <a
+                              href={`/api/pdf/receipt/${payment.id}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              aria-label={`تنزيل سند القبض رقم ${payment.id}`}
+                            >
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="تنزيل سند القبض"
+                              >
+                                <FileText className="h-4 w-4" />
+                              </Button>
+                            </a>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+            <Card className="border-0 shadow-sm">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <History className="h-5 w-5 text-[#139f95]" /> سجل العمليات (
+                  {row.operations.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {row.operations.length === 0 ? (
+                  <p className="py-6 text-sm text-slate-400">
+                    لا توجد عمليات مسجلة لهذا العقد.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {row.operations.map(operation => (
+                      <div
+                        key={operation.id}
+                        className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 py-3 text-sm last:border-0"
+                      >
+                        <div>
+                          <p className="font-bold text-slate-700">
+                            {operationLabels[operation.operation] ??
+                              operation.operation}
+                          </p>
+                          <p className="mt-1 text-xs text-slate-400">
+                            {formatDateTime(operation.createdAt)}
+                            {isAdmin
+                              ? ` · المنفذ: ${operation.createdByName}`
+                              : ""}{" "}
+                            · {operation.details ?? "بدون ملاحظات"}
+                          </p>
+                          {operation.previousVehicle ||
+                          operation.currentVehicle ? (
+                            <p className="mt-1 text-xs font-semibold text-[#0c8f87]">
+                              {operation.previousVehicle
+                                ? `من ${operation.previousVehicle.plateNumber}`
+                                : ""}
+                              {operation.previousVehicle &&
+                              operation.currentVehicle
+                                ? " إلى "
+                                : ""}
+                              {operation.currentVehicle
+                                ? `${operation.currentVehicle.plateNumber}`
+                                : ""}
+                            </p>
+                          ) : null}
+                        </div>
+                        <span className="font-semibold text-[#d99c1d]">
+                          {operation.amount} ر.س
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </>
+        )}
+      </div>
+    </DashboardLayout>
+  );
 }
 
 function Info({ label, value }: { label: string; value: string }) {
-  return <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-2 last:border-0"><span className="text-slate-400">{label}</span><span className="text-left font-semibold text-slate-700">{value}</span></div>;
+  return (
+    <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-2 last:border-0">
+      <span className="text-slate-400">{label}</span>
+      <span className="text-left font-semibold text-slate-700">{value}</span>
+    </div>
+  );
 }
