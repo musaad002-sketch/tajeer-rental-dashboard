@@ -1989,8 +1989,8 @@ export async function recordContractOperation(input: {
         "لا يمكن تنفيذ أي عملية: تم استرجاع العقد وإغلاقه نهائياً"
       );
     if (input.operation === "extension") {
-      const effectiveExtensionDays = contract.type === "monthly" ? 30 : (effectiveExtensionDays);
-      if (contract.type !== "monthly" && (!Number.isInteger(input.extensionDays) || (effectiveExtensionDays) <= 0)) {
+      const effectiveExtensionDays = contract.type === "monthly" ? 30 : (input.extensionDays ?? 0);
+      if (contract.type !== "monthly" && (!Number.isInteger(input.extensionDays) || (input.extensionDays ?? 0) <= 0)) {
         throw new Error("أدخل عدد أيام التمديد الصحيح للعقد اليومي");
       }
       const requestedEnd = extendReturnDate(
