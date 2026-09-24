@@ -32,72 +32,16 @@ import { useLocation } from "wouter";
 import NotificationCenter from "./NotificationCenter";
 import ForgotPasswordDialog from "./ForgotPasswordDialog";
 
-const items: {
-  label: string;
-  icon: typeof LayoutDashboard;
-  path: string;
-  permission: GranularPermissionKey;
-}[] = [
-  {
-    label: "الرئيسية",
-    icon: LayoutDashboard,
-    path: "/",
-    permission: "dashboard.view",
-  },
-  {
-    label: "جاهزية الأسطول",
-    icon: ShieldCheck,
-    path: "/fleet-readiness",
-    permission: "vehicles.view",
-  },
-  {
-    label: "السيارات",
-    icon: CarFront,
-    path: "/vehicles",
-    permission: "vehicles.view",
-  },
-  {
-    label: "العقود الحالية",
-    icon: ClipboardList,
-    path: "/contracts/active",
-    permission: "contracts.view",
-  },
-  {
-    label: "العقود المتأخرة",
-    icon: ClipboardList,
-    path: "/contracts/overdue",
-    permission: "contracts.view",
-  },
-  {
-    label: "العملاء",
-    icon: Users,
-    path: "/customers",
-    permission: "customers.view",
-  },
-  {
-    label: "الحسابات والمصروفات والاعتماد",
-    icon: WalletCards,
-    path: "/accounting",
-    permission: "accounting.view",
-  },
-  {
-    label: "الإيرادات",
-    icon: WalletCards,
-    path: "/payments",
-    permission: "payments.view",
-  },
-  {
-    label: "التقارير",
-    icon: FileBarChart,
-    path: "/reports",
-    permission: "reports.view",
-  },
-  {
-    label: "إدارة المستخدمين",
-    icon: Users,
-    path: "/users",
-    permission: "user_management.view",
-  },
+const items: { label: string; icon: typeof LayoutDashboard; path: string; permission: GranularPermissionKey }[] = [
+  { label: "الرئيسية", icon: LayoutDashboard, path: "/", permission: "dashboard.view" },
+  { label: "السيارات", icon: CarFront, path: "/vehicles", permission: "vehicles.view" },
+  { label: "العقود", icon: ClipboardList, path: "/contracts", permission: "contracts.view" },
+  { label: "العقود المعلقة", icon: ClipboardList, path: "/contracts/suspended", permission: "contracts.view" },
+  { label: "العملاء", icon: Users, path: "/customers", permission: "customers.view" },
+  { label: "الحسابات والمصروفات", icon: WalletCards, path: "/accounting", permission: "accounting.view" },
+  { label: "الإيرادات", icon: WalletCards, path: "/payments", permission: "payments.view" },
+  { label: "التقارير", icon: FileBarChart, path: "/reports", permission: "reports.view" },
+  { label: "إدارة المستخدمين", icon: Users, path: "/users", permission: "user_management.view" },
 ];
 
 const focusClass =
