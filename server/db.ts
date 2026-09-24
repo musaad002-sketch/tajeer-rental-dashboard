@@ -788,6 +788,7 @@ export async function listContracts(
       baseTotal: row.contract.totalAmount,
       expectedReturnDate: row.contract.expectedReturnDate,
       rentalAmount: row.contract.rentalAmount,
+      previousDueAmount: Number(row.contract.totalAmount) - Number(row.contract.paidAmount),
       type: row.contract.type,
       contractScope: ("contractScope" in row.contract
         ? row.contract.contractScope
@@ -1271,6 +1272,7 @@ export async function getDashboardSummary() {
       totalAmount: contract.totalAmount,
       expectedReturnDate: contract.expectedReturnDate,
       rentalAmount: contract.rentalAmount,
+      previousDueAmount: Number(contract.totalAmount) - Number(contract.paidAmount),
       type: contract.type,
       contractScope: contract.contractScope ?? undefined,
       days: contract.days,
@@ -2176,6 +2178,7 @@ export async function recordContractOperation(input: {
         baseTotal: contract.totalAmount,
         expectedReturnDate: contract.expectedReturnDate,
         rentalAmount: contract.rentalAmount,
+        previousDueAmount: Number(contract.totalAmount) - Number(contract.paidAmount),
         type: contract.type,
         contractScope: ("contractScope" in contract
           ? contract.contractScope
@@ -2274,6 +2277,7 @@ export async function recordContractOperation(input: {
         baseTotal: contract.totalAmount,
         expectedReturnDate: contract.expectedReturnDate,
         rentalAmount: contract.rentalAmount,
+        previousDueAmount: Number(contract.totalAmount) - Number(contract.paidAmount),
         type: contract.type,
         contractScope: ("contractScope" in contract
           ? contract.contractScope
@@ -2480,6 +2484,7 @@ export async function recordContractOperation(input: {
         baseTotal: contract.totalAmount,
         expectedReturnDate: contract.expectedReturnDate,
         rentalAmount: contract.rentalAmount,
+        previousDueAmount: Number(contract.totalAmount) - Number(contract.paidAmount),
         type: contract.type,
         contractScope: ("contractScope" in contract
           ? contract.contractScope
@@ -2518,6 +2523,7 @@ export async function recordContractOperation(input: {
         baseTotal: contract.totalAmount,
         expectedReturnDate: contract.expectedReturnDate,
         rentalAmount: contract.rentalAmount,
+        previousDueAmount: Number(contract.totalAmount) - Number(contract.paidAmount),
         type: contract.type,
         contractScope: ("contractScope" in contract
           ? contract.contractScope
@@ -2580,6 +2586,7 @@ export async function recordContractOperation(input: {
         baseTotal: contract.totalAmount,
         expectedReturnDate: contract.expectedReturnDate,
         rentalAmount: contract.rentalAmount,
+        previousDueAmount: Number(contract.totalAmount) - Number(contract.paidAmount),
         type: contract.type,
         contractScope: ("contractScope" in contract
           ? contract.contractScope
@@ -4132,6 +4139,7 @@ export async function getVehicleRevenueReport(
         baseTotal: contract.totalAmount,
         expectedReturnDate: contract.expectedReturnDate,
         rentalAmount: contract.rentalAmount,
+        previousDueAmount: Number(contract.totalAmount) - Number(contract.paidAmount),
         type: contract.type,
         contractScope: contract.contractScope ?? undefined,
         days: contract.days,
@@ -4188,6 +4196,7 @@ export async function getVehicleRevenueReport(
       baseTotal: row.contract.totalAmount,
       expectedReturnDate: row.contract.expectedReturnDate,
       rentalAmount: row.contract.rentalAmount,
+      previousDueAmount: Number(row.contract.totalAmount) - Number(row.contract.paidAmount),
       type: row.contract.type,
       contractScope: ("contractScope" in row.contract
         ? row.contract.contractScope
@@ -4373,6 +4382,7 @@ export async function getAccountingSummary() {
         baseTotal: contract.totalAmount,
         expectedReturnDate: contract.expectedReturnDate,
         rentalAmount: contract.rentalAmount,
+        previousDueAmount: Number(contract.totalAmount) - Number(contract.paidAmount),
         type: contract.type,
         contractScope: contract.contractScope ?? undefined,
         days: contract.days,
