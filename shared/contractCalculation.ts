@@ -81,11 +81,7 @@ export function isFinanciallyDistressed(input: { startDate: string | Date; unitR
 export function monthlyReturnDate(startDate: string) {
   const date = new Date(`${startDate}T00:00:00`);
   if (!startDate || !Number.isFinite(date.getTime())) return "";
-  const requestedDay = date.getDate();
-  date.setDate(1);
-  date.setMonth(date.getMonth() + 1);
-  const lastDayOfNextMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
-  date.setDate(Math.min(requestedDay, lastDayOfNextMonth));
+  date.setDate(date.getDate() + 30);
   return date.toISOString().slice(0, 10);
 }
 

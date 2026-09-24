@@ -23,10 +23,10 @@ describe("contract calculation", () => {
     expect(calculateMonthlyEntitlements("2026-01-01T09:00:00", "2026-03-02T09:00:00", "3000")[1]).toMatchObject({ month: 2, amount: "3000.00" });
   });
 
-  it("calculates monthly return dates and clamps short months", () => {
-    expect(monthlyReturnDate("2026-01-15")).toBe("2026-02-15");
-    expect(monthlyReturnDate("2026-01-31")).toBe("2026-02-28");
-    expect(monthlyReturnDate("2028-01-31")).toBe("2028-02-29");
+  it("calculates monthly return dates as independent 30-day periods", () => {
+    expect(monthlyReturnDate("2026-01-15")).toBe("2026-02-14");
+    expect(monthlyReturnDate("2026-01-31")).toBe("2026-03-02");
+    expect(monthlyReturnDate("2028-01-31")).toBe("2028-03-01");
     expect(monthlyReturnDate("2026-03-31")).toBe("2026-04-30");
   });
 
