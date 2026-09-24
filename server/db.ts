@@ -1989,9 +1989,13 @@ export async function recordContractOperation(input: {
         "لا يمكن تنفيذ أي عملية: تم استرجاع العقد وإغلاقه نهائياً"
       );
     if (input.operation === "extension") {
+      const effectiveExtensionDays = contract.type === "monthly" ? 30 : (effectiveExtensionDays);
+      if (contract.type !== "monthly" && (!Number.isInteger(input.extensionDays) || (effectiveExtensionDays) <= 0)) {
+        throw new Error("أدخل عدد أيام التمديد الصحيح للعقد اليومي");
+      }
       const requestedEnd = extendReturnDate(
         contract.expectedReturnDate,
-        input.extensionDays ?? 0
+        effectiveExtensionDays
       );
       if (!requestedEnd || !isValidRentalPeriod(contract.startDate, requestedEnd))
         throw new Error("مدة التمديد غير صحيحة");
@@ -2744,7 +2748,7 @@ export async function recordContractOperation(input: {
         contract.type === "monthly"
           ? new Date(
               new Date(contract.expectedReturnDate).getTime() +
-                Number(input.extensionDays ?? 0) * 86400000
+                Number(effectiveExtensionDays) * 86400000
             )
               .toISOString()
               .slice(0, 10)
@@ -2822,7 +2826,7 @@ export async function recordContractOperation(input: {
     if (input.operation === "extension") {
       const nextReturn = extendReturnDate(
         contract.expectedReturnDate,
-        input.extensionDays!
+        effectiveExtensionDays
       );
       if (!nextReturn) throw new Error("مدة التمديد غير صحيحة");
       await db

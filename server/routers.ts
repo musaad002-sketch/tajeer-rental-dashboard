@@ -1310,7 +1310,7 @@ export const appRouter = router({
           })
           .refine(
             input =>
-              input.operation !== "extension" || Boolean(input.extensionDays),
+              true,
             { message: "أدخل عدد أيام التمديد", path: ["extensionDays"] }
           )
           .refine(
