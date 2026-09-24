@@ -2748,7 +2748,7 @@ export async function recordContractOperation(input: {
         contract.type === "monthly"
           ? new Date(
               new Date(contract.expectedReturnDate).getTime() +
-                Number(effectiveExtensionDays) * 86400000
+                30 * 86400000
             )
               .toISOString()
               .slice(0, 10)
@@ -2826,7 +2826,7 @@ export async function recordContractOperation(input: {
     if (input.operation === "extension") {
       const nextReturn = extendReturnDate(
         contract.expectedReturnDate,
-        effectiveExtensionDays
+        contract.type === "monthly" ? 30 : (input.extensionDays ?? 0)
       );
       if (!nextReturn) throw new Error("مدة التمديد غير صحيحة");
       await db
