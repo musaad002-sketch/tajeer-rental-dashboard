@@ -22,7 +22,6 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
-  ShieldCheck,
   Users,
   WalletCards,
   X,
